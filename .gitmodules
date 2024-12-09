@@ -1,0 +1,15 @@
+[submodule "PI/src/realsense-ros"]
+	path = PI/src/realsense-ros
+	url = https://github.com/IntelRealSense/realsense-ros
+[submodule "PI/src/micro_ros_setup"]
+	path = PI/src/micro_ros_setup
+	url = https://github.com/micro-ROS/micro_ros_setup.git
+[submodule "PI/src/uros/drive_base"]
+	path = PI/src/uros/drive_base
+	url = https://github.com/micro-ROS/drive_base
+[submodule "PI/src/uros/micro-ROS-Agent"]
+	path = PI/src/uros/micro-ROS-Agent
+	url = https://github.com/micro-ROS/micro-ROS-Agent
+[submodule "PI/src/uros/micro_ros_msgs"]
+	path = PI/src/uros/micro_ros_msgs
+	url = https://github.com/micro-ROS/micro_ros_msgs
