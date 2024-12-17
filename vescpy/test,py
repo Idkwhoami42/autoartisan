@@ -1,0 +1,4 @@
+velocity = 200
+degrees_per_step = 0.1
+
+print(velocity / (degrees_per_step * 5))
