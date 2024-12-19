@@ -7,7 +7,7 @@ import random
 
 
 class Motor:
-    def __init__(self, id, is_can=False, can_ids=[], serialport=None):
+    def __init__(self, id, direction, is_can=False, can_ids=[], serialport=None):
         self.id = id
         self.is_can = is_can
         self.can_ids = can_ids
@@ -15,11 +15,16 @@ class Motor:
         self.homed = False
         self.home_cooldown = 0
         self.rotations = 0
+
+        if direction != None:
+            self.direction = direction # 0 = CW, 1 = CCW
+        else:
+            raise("Specify direction!")
         
         self.temp_fet = -1
         self.temp_motor = -1
         self.avg_motor_current = -1
-        self.avg_motor_in = -1
+        self.avg_in_current = -1
         self.avg_id = -1
         self.avg_iq = -1
         self.duty_now = -1
@@ -69,7 +74,7 @@ class Motor:
         print("temp_fet: ", self.temp_fet)
         print("temp_motor: ", self.temp_motor)
         print("avg_motor_current: ", self.avg_motor_current)
-        print("avg_motor_in: ", self.avg_motor_in)
+        print("avg_current_in: ", self.avg_in_current)
         print("avg_id: ", self.avg_id)
         print("avg_iq: ", self.avg_iq)
         print("duty_now: ", self.duty_now)
@@ -123,18 +128,10 @@ class Motor:
             delta = self.clamped_pos - self.last_clamped_pos
             if delta > 180:
                 self.rotations -= 1
-                # if self.is_can:
-                #     self.pos += 360
-                # else:
-                #     self.pos -= 360
             elif delta < -180:
                 self.rotations += 1
-                # if self.is_can:
-                #     self.pos -= 360
-                # else:
-                #     self.pos += 360
 
-        if self.is_can:
+        if self.direction == 1:
             self.pos = self.clamped_pos + self.rotations * 360
         else:
             self.pos = -(self.clamped_pos + self.rotations * 360)
@@ -149,22 +146,21 @@ class Motor:
 
     def set_pos(self, serial, pos):
         self.get_values(serial)
+
+        if self.direction == 0: # CW, position should be negative
+            pos = -pos
+
         package = Package()
         if self.is_can:
             package.encode_command(Commands.COMM_FORWARD_CAN, [self.id, Commands.COMM_SET_POS.value, int(((pos+self.offset)%360)*1e6)])
         else:
             package.encode_command(Commands.COMM_SET_POS, [int(((pos+self.offset)%360)*1e6)])
         package.send(serial)
-        return True
 
     def go_to_pos(self, serial, pos, degrees_per_step=0.5, velocity=40, velocity_rampsteps=None, can_motors=[None]):
         self.get_values(serial)
         for motor in can_motors:
             motor.get_values(serial)
-
-        # if abs(self.pos - pos) < 2 * degrees_per_step:
-        #     print("Already at position!")
-        #     return
         
         # Over how many steps should the velocity ramp up
         if velocity_rampsteps == None:
@@ -230,18 +226,9 @@ class Motor:
             else:
                 continue
             
-            tries = 1
-            success = self.set_pos(serial, -position) and can_motors[0].set_pos(serial, position)
-            while not success and tries <= 3:
-                success = self.set_pos(serial, -position) and can_motors[0].set_pos(serial, position)
-                tries += 1
-
-        error = abs((self.pos) - pos)
-        print("Error: ", error)
-        # if error > 2:
-        #     self.go_to_pos(serial, pos, degrees_per_step=degrees_per_step, velocity=velocity, velocity_rampsteps=velocity_rampsteps)
-
-        time.sleep(1)
+            self.set_pos(serial, position) 
+            for motor in can_motors:
+                motor.set_pos(serial, position)
         
         self.get_values(serial)
         for motor in can_motors:

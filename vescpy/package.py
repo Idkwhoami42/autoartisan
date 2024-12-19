@@ -96,7 +96,7 @@ class Package:
                         motor.temp_fet = struct.unpack('>h', bytearray(self.payload[1:3]))[0] / 1e1
                         motor.temp_motor = struct.unpack('>h', bytearray(self.payload[3:5]))[0] / 1e1
                         motor.avg_motor_current = struct.unpack('>i', bytearray(self.payload[5:9]))[0] / 1e2
-                        motor.avg_motor_in = struct.unpack('>i', bytearray(self.payload[9:13]))[0] / 1e2
+                        motor.avg_in_current = struct.unpack('>i', bytearray(self.payload[9:13]))[0] / 1e2
                         motor.avg_id = struct.unpack('>i', bytearray(self.payload[13:17]))[0] / 1e2
                         motor.avg_iq = struct.unpack('>i', bytearray(self.payload[17:21]))[0] / 1e2
                         motor.duty_now = struct.unpack('>h', bytearray(self.payload[21:23]))[0] / 1e3
@@ -115,7 +115,7 @@ class Package:
                         if motor.homed:
                             motor.last_clamped_pos = motor.clamped_pos if motor.clamped_pos != motor.offset else 0
                         motor.clamped_pos = (motor.pid_pos_now % 360)
-                        if motor.is_can:
+                        if motor.direction == 1:
                             motor.pos = motor.clamped_pos + motor.rotations * 360
                         else:
                             motor.pos = -(motor.clamped_pos + motor.rotations * 360)
