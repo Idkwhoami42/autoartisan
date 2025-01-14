@@ -42,8 +42,8 @@ class MasonInterface : public hardware_interface::SystemInterface {
     virtual hardware_interface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State &previous_state) override;
 
     virtual hardware_interface::CallbackReturn on_init(const hardware_interface::HardwareInfo &info) override;
-    virtual std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
-    virtual std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
+    // virtual std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
+    // virtual std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
     virtual hardware_interface::return_type read(const rclcpp::Time &time, const rclcpp::Duration &period) override;
     virtual hardware_interface::return_type write(const rclcpp::Time &time, const rclcpp::Duration &period) override;
 
@@ -69,6 +69,24 @@ class MasonInterface : public hardware_interface::SystemInterface {
 
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr homing_service_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_service_;
+
+    // ADDED FOR TEST
+    double hw_start_sec_;
+    double hw_stop_sec_;
+    double hw_slowdown_;
+
+    // Enum defining at which control level we are
+    // Dumb way of maintaining the command_interface type per joint.
+    enum integration_level_t : std::uint8_t
+    {
+        UNDEFINED = 0,
+        POSITION = 1,
+        VELOCITY = 2,
+        ACCELERATION = 3
+    };
+
+    // Active control mode for each actuator
+    std::vector<integration_level_t> control_level_;
 };
 };  // namespace mason_hardware
 

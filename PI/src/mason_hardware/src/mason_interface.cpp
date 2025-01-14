@@ -19,8 +19,8 @@ MasonInterface::~MasonInterface() {
     }
 }
 
-void MasonInterface::homingCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                    std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+void MasonInterface::homingCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+                                    std::shared_ptr<std_srvs::srv::Trigger::Response> /*response*/) {
     // try {
     //     this->motorL_->doHoming(this->cfg_.port);
     //     this->motorR_->doHoming(this->cfg_.port);
@@ -46,8 +46,8 @@ void MasonInterface::homingCallback(const std::shared_ptr<std_srvs::srv::Trigger
     // }
 }
 
-void MasonInterface::returnToStart(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-                                   std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+void MasonInterface::returnToStart(const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+                                   std::shared_ptr<std_srvs::srv::Trigger::Response> /*response*/) {
     // try {
     //     this->motorT_->direction = 1;
     //     this->motorR_->direction = 1;
@@ -91,6 +91,60 @@ hardware_interface::CallbackReturn MasonInterface::on_init(const hardware_interf
 
     // std::vector<std::pair<int, std::string>> contactSensorPins = {};
     // std::vector<std::string> sensorNames = {"bottom_left", "left", "top_left", "top_right", "right", "bottom_right"};
+
+    // [START]: ADDED ONLY FOR TEST
+    // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
+    hw_start_sec_ = stod(info_.hardware_parameters["example_param_hw_start_duration_sec"]);
+    hw_stop_sec_ = stod(info_.hardware_parameters["example_param_hw_stop_duration_sec"]);
+    hw_slowdown_ = stod(info_.hardware_parameters["example_param_hw_slowdown"]);
+    // END: This part here is for exemplary purposes - Please do not copy to your production code
+    control_level_.resize(info_.joints.size(), integration_level_t::POSITION);
+
+    for (const hardware_interface::ComponentInfo & joint : info_.joints)
+    {
+        // RRBotSystemMultiInterface has exactly 3 state interfaces
+        // and 3 command interfaces on each joint
+        if (joint.command_interfaces.size() != 3)
+        {
+            RCLCPP_FATAL(
+                get_logger(), "Joint '%s' has %zu command interfaces. 3 expected.", joint.name.c_str(),
+                joint.command_interfaces.size());
+            return hardware_interface::CallbackReturn::ERROR;
+        }
+
+        if (!(joint.command_interfaces[0].name == hardware_interface::HW_IF_POSITION ||
+            joint.command_interfaces[0].name == hardware_interface::HW_IF_VELOCITY ||
+            joint.command_interfaces[0].name == hardware_interface::HW_IF_ACCELERATION))
+        {
+            RCLCPP_FATAL(
+                get_logger(), "Joint '%s' has %s command interface. Expected %s, %s, or %s.",
+                joint.name.c_str(), joint.command_interfaces[0].name.c_str(),
+                hardware_interface::HW_IF_POSITION, hardware_interface::HW_IF_VELOCITY,
+                hardware_interface::HW_IF_ACCELERATION);
+            return hardware_interface::CallbackReturn::ERROR;
+        }
+
+        if (joint.state_interfaces.size() != 3)
+        {
+            RCLCPP_FATAL(
+                get_logger(), "Joint '%s'has %zu state interfaces. 3 expected.", joint.name.c_str(),
+                joint.command_interfaces.size());
+            return hardware_interface::CallbackReturn::ERROR;
+        }
+
+        if (!(joint.state_interfaces[0].name == hardware_interface::HW_IF_POSITION ||
+            joint.state_interfaces[0].name == hardware_interface::HW_IF_VELOCITY ||
+            joint.state_interfaces[0].name == hardware_interface::HW_IF_ACCELERATION))
+        {
+            RCLCPP_FATAL(
+                get_logger(), "Joint '%s' has %s state interface. Expected %s, %s, or %s.",
+                joint.name.c_str(), joint.state_interfaces[0].name.c_str(),
+                hardware_interface::HW_IF_POSITION, hardware_interface::HW_IF_VELOCITY,
+                hardware_interface::HW_IF_ACCELERATION);
+            return hardware_interface::CallbackReturn::ERROR;
+        }
+    }
+    // [END]: ADDED ONLY FOR TEST
     this->cfg_.device = info_.hardware_parameters["device"].c_str();
 
     std::string left_motor_name = info_.hardware_parameters["left_motor_name"].c_str();
@@ -160,33 +214,38 @@ hardware_interface::CallbackReturn MasonInterface::on_init(const hardware_interf
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-std::vector<hardware_interface::StateInterface> MasonInterface::export_state_interfaces() {
-    std::vector<hardware_interface::StateInterface> state_interfaces = {};
+// std::vector<hardware_interface::StateInterface> MasonInterface::export_state_interfaces() {
+//     std::vector<hardware_interface::StateInterface> state_interfaces = {};
 
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-        "x_position_state", hardware_interface::HW_IF_POSITION, &this->position_states_[0]));
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-        "y_position_state", hardware_interface::HW_IF_POSITION, &this->position_states_[1]));
+//     state_interfaces.emplace_back(hardware_interface::StateInterface(
+//         "x_position_state", hardware_interface::HW_IF_POSITION, &this->position_states_[0]));
+//     state_interfaces.emplace_back(hardware_interface::StateInterface(
+//         "y_position_state", hardware_interface::HW_IF_POSITION, &this->position_states_[1]));
 
-    return state_interfaces;
-}
+//     return state_interfaces;
+// }
 
-std::vector<hardware_interface::CommandInterface> MasonInterface::export_command_interfaces() {
-    std::vector<hardware_interface::CommandInterface> command_interfaces = {};
+// std::vector<hardware_interface::CommandInterface> MasonInterface::export_command_interfaces() {
+//     std::vector<hardware_interface::CommandInterface> command_interfaces = {};
 
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
-        "x_position_cmd", hardware_interface::HW_IF_POSITION, &this->position_commands_[0]));
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
-        "y_position_cmd", hardware_interface::HW_IF_POSITION, &this->position_commands_[1]));
+//     command_interfaces.emplace_back(hardware_interface::CommandInterface(
+//         "x_position_cmd", hardware_interface::HW_IF_POSITION, &this->position_commands_[0]));
+//     command_interfaces.emplace_back(hardware_interface::CommandInterface(
+//         "y_position_cmd", hardware_interface::HW_IF_POSITION, &this->position_commands_[1]));
 
-    return command_interfaces;
-}
+//     return command_interfaces;
+// }
 
-hardware_interface::CallbackReturn MasonInterface::on_activate(const rclcpp_lifecycle::State &previous_state) {
+hardware_interface::CallbackReturn MasonInterface::on_activate(const rclcpp_lifecycle::State &/*previous_state*/) {
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Activating ...please wait...");
 
     if (!this->cfg_.port->is_open()) {
         return hardware_interface::CallbackReturn::ERROR;
+    }
+
+    for (std::size_t i = 0; i < info_.joints.size(); i++)
+    {
+        control_level_[i] = integration_level_t::VELOCITY;
     }
 
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Successfully activated!");
@@ -194,7 +253,7 @@ hardware_interface::CallbackReturn MasonInterface::on_activate(const rclcpp_life
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn MasonInterface::on_deactivate(const rclcpp_lifecycle::State &previous_state) {
+hardware_interface::CallbackReturn MasonInterface::on_deactivate(const rclcpp_lifecycle::State &/*previous_state*/) {
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Deactivating ...please wait...");
 
     // Close port if open
@@ -207,57 +266,199 @@ hardware_interface::CallbackReturn MasonInterface::on_deactivate(const rclcpp_li
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::return_type MasonInterface::read(const rclcpp::Time &time, const rclcpp::Duration &period) {
-    if (!this->cfg_.port->is_open()) {
-        return hardware_interface::return_type::ERROR;
+hardware_interface::return_type MasonInterface::read(
+  const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
+{
+  // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
+  std::stringstream ss;
+  ss << "Reading states:";
+  for (std::size_t i = 0; i < info_.joints.size(); i++)
+  {
+    const auto name_acc = info_.joints[i].name + "/" + hardware_interface::HW_IF_ACCELERATION;
+    const auto name_vel = info_.joints[i].name + "/" + hardware_interface::HW_IF_VELOCITY;
+    const auto name_pos = info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION;
+    switch (control_level_[i])
+    {
+      case integration_level_t::UNDEFINED:
+        RCLCPP_INFO(get_logger(), "Nothing is using the hardware interface!");
+        return hardware_interface::return_type::OK;
+        break;
+      case integration_level_t::POSITION:
+        set_state(name_acc, 0.);
+        set_state(name_vel, 0.);
+        set_state(
+          name_pos,
+          get_state(name_pos) + (get_command(name_pos) - get_state(name_pos)) / hw_slowdown_);
+        break;
+      case integration_level_t::VELOCITY:
+        set_state(name_acc, 0.);
+        set_state(name_vel, get_command(name_vel));
+        set_state(
+          name_pos, get_state(name_pos) + get_state(name_vel) * period.seconds() / hw_slowdown_);
+        break;
+      case integration_level_t::ACCELERATION:
+        set_state(name_acc, get_command(name_acc));
+        set_state(
+          name_vel, get_state(name_vel) + get_state(name_acc) * period.seconds() / hw_slowdown_);
+        set_state(
+          name_pos, get_state(name_pos) + get_state(name_vel) * period.seconds() / hw_slowdown_);
+        break;
     }
-
-    double delta_seconds = period.seconds();
-
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Getting values for left motor . . .");
-    double prev_pos = this->motorL_->pos;
-    bool res = this->motorL_->getValues(this->cfg_.port);
-    if (!res) {
-        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"),
-                    "getValues returned false for left motor. Errors may cause inaccuracies in values printed");
-        return hardware_interface::return_type::ERROR;
-    }
-    this->motorL_->vel = (this->motorL_->pos - prev_pos) / delta_seconds;
-    this->motorL_->printValues();
-
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Getting values for right motor . . .");
-    prev_pos = this->motorR_->pos;
-    res = this->motorR_->getValues(this->cfg_.port);
-    if (!res) {
-        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"),
-                    "getValues returned false for right motor. Errors may cause inaccuracies in values printed");
-        return hardware_interface::return_type::ERROR;
-    }
-    this->motorR_->vel = (this->motorR_->pos - prev_pos) / delta_seconds;
-    this->motorR_->printValues();
-
-    return hardware_interface::return_type::OK;
+    ss << std::fixed << std::setprecision(2) << std::endl
+       << "\t"
+       << "pos: " << get_state(name_pos) << ", vel: " << get_state(name_vel)
+       << ", acc: " << get_state(name_acc) << " for joint " << i;
+  }
+  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500, "%s", ss.str().c_str());
+  // END: This part here is for exemplary purposes - Please do not copy to your production code
+  return hardware_interface::return_type::OK;
 }
 
-hardware_interface::return_type MasonInterface::write(const rclcpp::Time &time, const rclcpp::Duration &period) {
-    if (!this->cfg_.port->is_open()) {
-        return hardware_interface::return_type::ERROR;
-    }
+// hardware_interface::return_type MasonInterface::read(const rclcpp::Time &time, const rclcpp::Duration &period) {
+//     if (!this->cfg_.port->is_open()) {
+//         return hardware_interface::return_type::ERROR;
+//     }
 
-    double clamped_velocity_L = std::clamp(this->motorL_->cmd, -this->cfg_.max_velocity_, this->cfg_.max_velocity_);
-    double clamped_velocity_R = std::clamp(this->motorR_->cmd, -this->cfg_.max_velocity_, this->cfg_.max_velocity_);
-    int duty_L = static_cast<int>(clamped_velocity_L * this->cfg_.duty_conversion_factor_);
-    int duty_R = static_cast<int>(clamped_velocity_R * this->cfg_.duty_conversion_factor_);
-    int duty = static_cast<int>(((duty_R + duty_L) / 2));
+//     double delta_seconds = period.seconds();
 
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Writing commands for left motor . . .");
-    this->motorL_->setDuty(this->cfg_.port, duty);
+//     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Getting values for left motor . . .");
+//     double prev_pos = this->motorL_->pos;
+//     bool res = this->motorL_->getValues(this->cfg_.port);
+//     if (!res) {
+//         RCLCPP_INFO(rclcpp::get_logger("MasonInterface"),
+//                     "getValues returned false for left motor. Errors may cause inaccuracies in values printed");
+//         return hardware_interface::return_type::ERROR;
+//     }
+//     this->motorL_->vel = (this->motorL_->pos - prev_pos) / delta_seconds;
+//     this->motorL_->printValues();
 
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Writing commands for right motor . . .");
-    this->motorR_->setDuty(this->cfg_.port, duty);
+//     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Getting values for right motor . . .");
+//     prev_pos = this->motorR_->pos;
+//     res = this->motorR_->getValues(this->cfg_.port);
+//     if (!res) {
+//         RCLCPP_INFO(rclcpp::get_logger("MasonInterface"),
+//                     "getValues returned false for right motor. Errors may cause inaccuracies in values printed");
+//         return hardware_interface::return_type::ERROR;
+//     }
+//     this->motorR_->vel = (this->motorR_->pos - prev_pos) / delta_seconds;
+//     this->motorR_->printValues();
 
-    return hardware_interface::return_type::OK;
+//     return hardware_interface::return_type::OK;
+// }
+
+// hardware_interface::return_type MasonInterface::write(const rclcpp::Time &time, const rclcpp::Duration &period) {
+//     if (!this->cfg_.port->is_open()) {
+//         return hardware_interface::return_type::ERROR;
+//     }
+
+//     double clamped_velocity_L = std::clamp(this->motorL_->cmd, -this->cfg_.max_velocity_, this->cfg_.max_velocity_);
+//     double clamped_velocity_R = std::clamp(this->motorR_->cmd, -this->cfg_.max_velocity_, this->cfg_.max_velocity_);
+//     int duty_L = static_cast<int>(clamped_velocity_L * this->cfg_.duty_conversion_factor_);
+//     int duty_R = static_cast<int>(clamped_velocity_R * this->cfg_.duty_conversion_factor_);
+//     int duty = static_cast<int>(((duty_R + duty_L) / 2));
+
+//     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Writing commands for left motor . . .");
+//     this->motorL_->setDuty(this->cfg_.port, duty);
+
+//     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Writing commands for right motor . . .");
+//     this->motorR_->setDuty(this->cfg_.port, duty);
+
+//     return hardware_interface::return_type::OK;
+// }
+
+
+// ADDED ONLY FOR TEST
+// hardware_interface::return_type MasonInterface::prepare_command_mode_switch(
+//   const std::vector<std::string> & start_interfaces,
+//   const std::vector<std::string> & stop_interfaces)
+// {
+//   // Prepare for new command modes
+//   std::vector<integration_level_t> new_modes = {};
+//   for (std::string key : start_interfaces)
+//   {
+//     for (std::size_t i = 0; i < info_.joints.size(); i++)
+//     {
+//       if (key == info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION)
+//       {
+//         new_modes.push_back(integration_level_t::POSITION);
+//       }
+//       if (key == info_.joints[i].name + "/" + hardware_interface::HW_IF_VELOCITY)
+//       {
+//         new_modes.push_back(integration_level_t::VELOCITY);
+//       }
+//       if (key == info_.joints[i].name + "/" + hardware_interface::HW_IF_ACCELERATION)
+//       {
+//         new_modes.push_back(integration_level_t::ACCELERATION);
+//       }
+//     }
+//   }
+//   // Example criteria: All joints must be given new command mode at the same time
+//   if (new_modes.size() != info_.joints.size())
+//   {
+//     return hardware_interface::return_type::ERROR;
+//   }
+//   // Example criteria: All joints must have the same command mode
+//   if (!std::all_of(
+//         new_modes.begin() + 1, new_modes.end(),
+//         [&](integration_level_t mode) { return mode == new_modes[0]; }))
+//   {
+//     return hardware_interface::return_type::ERROR;
+//   }
+
+//   // Stop motion on all relevant joints that are stopping
+//   for (std::string key : stop_interfaces)
+//   {
+//     for (std::size_t i = 0; i < info_.joints.size(); i++)
+//     {
+//       if (key.find(info_.joints[i].name) != std::string::npos)
+//       {
+//         set_command(
+//           info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION,
+//           get_state(info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION));
+//         set_command(info_.joints[i].name + "/" + hardware_interface::HW_IF_VELOCITY, 0.0);
+//         set_command(info_.joints[i].name + "/" + hardware_interface::HW_IF_ACCELERATION, 0.0);
+//         control_level_[i] = integration_level_t::UNDEFINED;  // Revert to undefined
+//       }
+//     }
+//   }
+//   // Set the new command modes
+//   for (std::size_t i = 0; i < info_.joints.size(); i++)
+//   {
+//     if (control_level_[i] != integration_level_t::UNDEFINED)
+//     {
+//       // Something else is using the joint! Abort!
+//       return hardware_interface::return_type::ERROR;
+//     }
+//     control_level_[i] = new_modes[i];
+//   }
+//   return hardware_interface::return_type::OK;
+// }
+
+hardware_interface::return_type MasonInterface::write(
+  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+{
+  // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
+  std::stringstream ss;
+  ss << "Writing commands:";
+  for (std::size_t i = 0; i < info_.joints.size(); i++)
+  {
+    // Simulate sending commands to the hardware
+    const auto name_acc = info_.joints[i].name + "/" + hardware_interface::HW_IF_ACCELERATION;
+    const auto name_vel = info_.joints[i].name + "/" + hardware_interface::HW_IF_VELOCITY;
+    const auto name_pos = info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION;
+    ss << std::fixed << std::setprecision(2) << std::endl
+       << "\t"
+       << "command pos: " << get_command(name_pos) << ", vel: " << get_command(name_vel)
+       << ", acc: " << get_command(name_acc) << " for joint " << i
+       << ", control lvl: " << static_cast<int>(control_level_[i]);
+    (this->motorR_->joint_name == info_.joints[i].name) ? this->motorR_->setDuty(this->cfg_.port, get_command(name_vel)) : ((this->motorL_->joint_name == info_.joints[i].name) ? this->motorL_->setDuty(this->cfg_.port, get_command(name_vel)) : this->motorH_->setDuty(this->cfg_.port, get_command(name_vel)));
+  }
+  RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500, "%s", ss.str().c_str());
+  // END: This part here is for exemplary purposes - Please do not copy to your production code
+
+  return hardware_interface::return_type::OK;
 }
+
 }  // namespace mason_hardware
 
 #include "pluginlib/class_list_macros.hpp"

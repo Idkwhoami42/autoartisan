@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="mason_ros2_control" params="name prefix slowdown use_mock_hardware">
+
+    <ros2_control name="${name}" type="system">
+      <xacro:unless value="${use_mock_hardware}">
+        <hardware>
+          <plugin>mason_hardware/MasonInterface</plugin>
+          <param name="left_motor_name">MotorJointLeft</param>
+          <param name="right_motor_name">MotorJointRight</param>
+          <param name="horizontal_motor_name">MotorTop</param>
+          <param name="device">/dev/ttyACM0</param>
+          <param name="baud_rate">115200</param>
+          <param name="timeout_ms">50</param>
+          <param name="id_left">0</param>
+          <param name="id_right">1</param>
+          <param name="id_horizontal">1</param>
+          <param name="example_param_hw_start_duration_sec">0.0</param>
+          <param name="example_param_hw_stop_duration_sec">3.0</param>
+          <param name="example_param_hw_slowdown">${slowdown}</param>
+          <!-- <param name="direction_right">0</param>
+          <param name="direction_left">0</param> -->
+        </hardware>
+      </xacro:unless>
+      <xacro:if value="${use_mock_hardware}">
+        <hardware>
+          <plugin>mock_components/GenericSystem</plugin>
+          <param name="calculate_dynamics">true</param>
+        </hardware>
+      </xacro:if>
+      <!-- <joint name="MotorJointLeft">
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+        <command_interface name="velocity"/>
+      </joint>
+      <joint name="MotorJointRight">
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+        <command_interface name="velocity"/>
+      </joint> -->
+
+      <joint name="${prefix}MotorJointRight">
+        <command_interface name="position">
+          <param name="min">-1</param>
+          <param name="max">1</param>
+        </command_interface>
+        <command_interface name="velocity">
+          <param name="min">-1</param>
+          <param name="max">1</param>
+        </command_interface>
+        <command_interface name="acceleration">
+          <param name="min">-1</param>
+          <param name="max">1</param>
+        </command_interface>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+        <state_interface name="acceleration"/>
+      </joint>
+      <joint name="${prefix}MotorJointLeft">
+        <command_interface name="position">
+          <param name="min">-1</param>
+          <param name="max">1</param>
+        </command_interface>
+        <command_interface name="velocity">
+          <param name="min">-1</param>
+          <param name="max">1</param>
+        </command_interface>
+        <command_interface name="acceleration">
+          <param name="min">-1</param>
+          <param name="max">1</param>
+        </command_interface>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+        <state_interface name="acceleration"/>
+      </joint>
+    </ros2_control>
+  </xacro:macro>
+
+</robot>
