@@ -36,8 +36,15 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
 # ${interface_files}
 # )
 
+# find_library(GPIOD_LIBRARY gpiod)
+# if(NOT GPIOD_LIBRARY)
+#     message(FATAL_ERROR "libgpiod not found")
+# endif()
+
 # Add the library
-add_library(mason_hardware SHARED src/mason_interface.cpp src/motor.cpp src/contact_sensors.cpp)
+add_library(mason_hardware SHARED src/mason_interface.cpp src/motor.cpp) # src/contact_sensors.cpp)
+# target_include_directories(mason_hardware PUBLIC /usr/include)
+# target_link_libraries(${PROJECT_NAME} ${GPIOD_LIBRARY})
 
 # Link any dependencies
 ament_target_dependencies(mason_hardware

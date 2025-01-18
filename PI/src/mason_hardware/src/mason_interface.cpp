@@ -12,10 +12,11 @@
 
 // I have given it the same radius as the motor as a placeholder
 #define WHEEL_RADIUS 0.0315
-const char *PORT = "dev/ttyACM0";
-std::mutex activeSensorMutex;
-std::string activeSensor = "";
-std::thread pollingThread;
+const char *chip = "gpiochip4";
+// std::mutex activeSensorMutex;
+// std::string activeSensor = "";
+// std::thread pollingThread;
+// std::chrono::nanoseconds t = std::chrono::nanoseconds{10000};
 
 namespace mason_hardware {
 
@@ -49,25 +50,25 @@ namespace mason_hardware {
         }
     }
 
-    void pollPins(ContactSensors* contactSensors) {
-        while (contactSensors->keepPolling.load()) {
-            if (contactSensors) {
-                contactSensors->event_lines = contactSensors->bulk.event_wait(t);
-                if (!contactSensors->event_lines.empty()) {
-                    for (const auto& event : contactSensors->event_lines) {
-                        std::unique_lock<std::mutex> lock(activeSensorMutex);
-                        activeSensor = contactSensors->buttonCallback(event.offset(), event.event_read());
-                    }
-                }
-            }
-        }
-    }
+    // void pollPins(ContactSensors* contactSensors) {
+    //     while (contactSensors->keepPolling.load()) {
+    //         if (contactSensors) {
+    //             contactSensors->event_lines = contactSensors->bulk.event_wait(t);
+    //             if (!contactSensors->event_lines.empty()) {
+    //                 for (const auto& event : contactSensors->event_lines) {
+    //                     std::unique_lock<std::mutex> lock(activeSensorMutex);
+    //                     activeSensor = contactSensors->buttonCallback(event.offset(), event.event_read());
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
     void MasonInterface::homingCallback() {
         // START_COMMENT
         try {
-            const auto name_pos_x = "MotorTop/" + hardware_interface::POSITION;
-            const auto name_pos_y = "MotorJointLeft/" + hardware_interface::POSITION;
+            auto name_pos_x = std::string("MotorTop/") + hardware_interface::HW_IF_POSITION;
+            auto name_pos_y = std::string("MotorJointLeft/") + hardware_interface::HW_IF_POSITION;
             this->motorL_->doHoming(this->cfg_.port);
             this->homing_done_ = this->motorL_->verifyHoming();
             this->motorR_->doHoming(this->cfg_.port);
@@ -76,43 +77,56 @@ namespace mason_hardware {
             this->homing_done_ = this->homing_done_ && this->motorH_->verifyHoming();
 
             double init_pos = 360;
-            while (true) {
-                std::string sensor = "";
-                {
-                    std::unique_lock<std::mutex> lock(activeSensorMutex);
-                    sensor = activeSensor;
-                }
-                if (sensor != "right") {
-                    this->controller_->goToPos(this->cfg_.port, init_pos, {this->motorH_});
-                    init_pos = init_pos + 360;
-                }
-                if (sensor == "right") break;
+            // while (true) {
+            //     std::string sensor = "";
+            //     {
+            //         std::unique_lock<std::mutex> lock(activeSensorMutex);
+            //         sensor = activeSensor;
+            //     }
+            //     if (sensor != "right") {
+            //         this->controller_->goToPos(this->cfg_.port, init_pos, {this->motorH_});
+            //         init_pos = init_pos + 360;
+            //     }
+            //     if (sensor == "right") break;
+            // }
+
+            int i = 0;
+            while (i < 8) {
+                this->controller_->goToPos(this->cfg_.port, init_pos, {this->motorH_});
+                init_pos = init_pos + 360;
+                i += 1;
             }
             this->motorH_->setDuty(this->cfg_.port, 0);
 
             this->max_x_ = this->motorH_->pos;
             // This was not technically a command, but don't want the motor to try to travel to a position it's already at
-            this->prev_position_command_[0] = this->max_x_;
+            this->prev_position_commands_[0] = this->max_x_;
 
             init_pos = 360.0;
-            while (true) {
-                std::string sensor = "";
-                {
-                    std::unique_lock<std::mutex> lock(activeSensorMutex);
-                    sensor = activeSensor;
-                }
-                if (sensor != "top-right" || sensor != "top-left") {
-                    this->controller_->goToPos(this->cfg_.port, init_pos, {this->motorL_, this->motorR_});
-                    init_pos = init_pos + 360.0;
-                }
-                if (sensor == "top-right" || sensor == "top-left") break;
+            // while (true) {
+            //     std::string sensor = "";
+            //     {
+            //         std::unique_lock<std::mutex> lock(activeSensorMutex);
+            //         sensor = activeSensor;
+            //     }
+            //     if (sensor != "top-right" || sensor != "top-left") {
+            //         this->controller_->goToPos(this->cfg_.port, init_pos, {this->motorL_, this->motorR_});
+            //         init_pos = init_pos + 360.0;
+            //     }
+            //     if (sensor == "top-right" || sensor == "top-left") break;
+            // }
+            i = 0;
+            while (i < 8) {
+                this->controller_->goToPos(this->cfg_.port, init_pos, {this->motorL_, this->motorR_});
+                init_pos = init_pos + 360;
+                i += 1;
             }
             this->motorR_->setDuty(this->cfg_.port, 0);
             this->motorL_->setDuty(this->cfg_.port, 0);
 
             this->max_y_ = (this->motorR_->pos + this->motorL_->pos) / 2.0;
             set_state(name_pos_y, this->max_y_);
-            this->prev_position_command_[1] = this->max_y_;
+            this->prev_position_commands_[1] = this->max_y_;
         } catch (std::exception &e) {
             std::cout << "Error during homing: " << e.what() << std::endl;
         }
@@ -130,40 +144,53 @@ namespace mason_hardware {
         try {
             if (!this->homing_done_) {
                 double init_pos = -360.0;
-                while (true) {
-                    std::string sensor = "";
-                    {
-                        std::unique_lock<std::mutex> lock(activeSensorMutex);
-                        sensor = activeSensor;
-                    }
-                    if (sensor != "left") {
-                        this->controller_->goToPos(this->cfg_.port, init_pos, {this->motorH_});
-                        init_pos = init_pos - 360.0;
-                    }
-                    if (sensor == "left") break;
+                // while (true) {
+                //     std::string sensor = "";
+                //     {
+                //         std::unique_lock<std::mutex> lock(activeSensorMutex);
+                //         sensor = activeSensor;
+                //     }
+                //     if (sensor != "left") {
+                //         this->controller_->goToPos(this->cfg_.port, init_pos, {this->motorH_});
+                //         init_pos = init_pos - 360.0;
+                //     }
+                //     if (sensor == "left") break;
+                // }
+                int i = 6;
+                while (i > 0) {
+                    this->controller_->goToPos(this->cfg_.port, init_pos, {this->motorH_});
+                    init_pos = init_pos - 360;
+                    i -= 1;
                 }
+                
                 this->motorH_->setDuty(this->cfg_.port, 0.0);
 
                 init_pos = -360.0;
-                while (true) {
-                    std::string sensor = "";
-                    {
-                        std::unique_lock<std::mutex> lock(activeSensorMutex);
-                        sensor = activeSensor;
-                    }
-                    if (sensor != "bottom-left") {
-                        this->controller_->goToPos(this->cfg_.port, 360, {this->motorL_, this->motorR_});
-                        init_pos = init_pos - 360;
-                    }
-                    if (sensor == "bottom-left") break;
+                // while (true) {
+                //     std::string sensor = "";
+                //     {
+                //         std::unique_lock<std::mutex> lock(activeSensorMutex);
+                //         sensor = activeSensor;
+                //     }
+                //     if (sensor != "bottom-left") {
+                //         this->controller_->goToPos(this->cfg_.port, 360, {this->motorL_, this->motorR_});
+                //         init_pos = init_pos - 360;
+                //     }
+                //     if (sensor == "bottom-left") break;
+                // }
+                i = 6;
+                while (i > 0) {
+                    this->controller_->goToPos(this->cfg_.port, init_pos, {this->motorL_, this->motorR_});
+                    init_pos = init_pos - 360;
+                    i -= 1;
                 }
                 this->motorR_->setDuty(this->cfg_.port, 0);
                 this->motorL_->setDuty(this->cfg_.port, 0);
             } else {
-                this->controller_->goToPosXY(this->cfg_.port, 0.0, {this->motorH_, this->motorL_, this->motorR_});
+                this->controller_->goToPos(this->cfg_.port, 0.0, {this->motorH_, this->motorL_, this->motorR_});
             }
-            this->prev_pos_commands_[0] = 0.0;
-            this->prev_pos_commands_[1] = 0.0;
+            this->prev_position_commands_[0] = 0.0;
+            this->prev_position_commands_[1] = 0.0;
         } catch (std::exception &e) {
             this->at_starting_point_ = false;
             printf("Error whilst returning to start: %s.\n", e.what());
@@ -183,8 +210,6 @@ namespace mason_hardware {
             return hardware_interface::CallbackReturn::ERROR;
         }
 
-        std::vector<std::pair<int, std::string>> contactSensorPins = {};
-        std::vector<std::string> sensorNames = {"bottom_left",  "left", "top_left", "top_right", "right", "bottom_right"};
         this->cfg_.device = info_.hardware_parameters["device"].c_str();
         std::string leftMotor = info_.hardware_parameters["left_motor_name"].c_str();
         std::string rightMotor = info_.hardware_parameters["right_motor_name"].c_str();
@@ -195,13 +220,27 @@ namespace mason_hardware {
         int horizontal_motor_id = std::stoi(info_.hardware_parameters["id_horizontal"]);
         // double timeout_ms = std::stod(info_.hardware_parameters["timeout_ms"]);
 
-        for (auto name : sensorNames) {
-            contactSensorPins.push_back(std::make_pair(std::stoi(info_.hardware_parameters[name]), name));
-        }
+        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - LEFT_MOTOR_NAME: %s", leftMotor.c_str());
+        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - RIGHT_MOTOR_NAME: %s", rightMotor.c_str());
+        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - HORIZONTAL_MOTOR_NAME: %s", horizontalMotor.c_str());
+        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - LEFT_MOTOR_ID: %d", left_motor_id);
+        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - RIGHT_MOTOR_ID: %d", right_motor_id);
+        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - HORIZONTAL_MOTOR_ID: %d", horizontal_motor_id);
+        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - DEVICE: %s", this->cfg_.device.c_str());
+        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - BAUD_RATE: %d", baudRate);
 
-        ContactSensors comms("gpiochip4", contactSensorPins);
+        std::vector<std::pair<unsigned int, std::string>> contactSensorPins = {
+            {1, "bottom_left"},
+            {13, "left"},
+            {3, "top_left"},
+            {4, "top_right"},
+            {26, "right"},
+            {2, "bottom_right"}
+        };
 
-        this->contactSensors = &comms;
+        // ContactSensors comms(chip, contactSensorPins);
+
+        // this->contactSensors = &comms;
 
         // angular_velocity_max = Power_max / Torque_max
         double angular_velocity = static_cast<double>(2450) / static_cast<double>(7);
@@ -239,15 +278,6 @@ namespace mason_hardware {
             this->controller_ = &controller;
             // END_COMMENT 
 
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - LEFT_MOTOR_NAME: %s", leftMotor.c_str());
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - RIGHT_MOTOR_NAME: %s", rightMotor.c_str());
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - HORIZONTAL_MOTOR_NAME: %s", horizontalMotor.c_str());
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - LEFT_MOTOR_ID: %d", left_motor_id);
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - RIGHT_MOTOR_ID: %d", right_motor_id);
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - HORIZONTAL_MOTOR_ID: %d", horizontal_motor_id);
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - DEVICE: %s", this->cfg_.device.c_str());
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - BAUD_RATE: %d", baudRate);
-
             this->prev_position_commands_.resize(2, std::numeric_limits<double>::quiet_NaN());
 
         } catch (std::exception &e) {
@@ -257,7 +287,7 @@ namespace mason_hardware {
         this->homing_pub_ = std::make_shared<HomingPublisher>();
 
         RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Hardware interface activated.");
-        pollingThread = std::thread(pollPins, this->contactSensors);
+        // pollingThread = std::thread(pollPins, this->contactSensors);
 
         return hardware_interface::CallbackReturn::SUCCESS;
     }

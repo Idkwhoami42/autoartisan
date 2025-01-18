@@ -16,7 +16,7 @@ std::vector<unsigned int> pins;
 std::string ContactSensors::buttonCallback(unsigned int pin, gpiod::line_event event) {
     int index = static_cast<int>(pin);
     if (event.event_type == gpiod::line_event::FALLING_EDGE) {
-        return this->pinMap[pin];
+        return this->pinMap[index];
     } else {
         return "";
     }

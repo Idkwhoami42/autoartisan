@@ -4,7 +4,7 @@
 #include <boost/asio.hpp>
 
 #include "motor.hpp"
-#include "contact_sensors.hpp"
+// #include "contact_sensors.hpp"
 
 #include <memory>
 #include <string>
@@ -73,7 +73,7 @@ namespace mason_hardware {
             Motor* motorR_ = nullptr;
             Motor* motorH_ = nullptr;
             Controller* controller_ = nullptr;
-            ContactSensors* contactSensors = nullptr;
+            // ContactSensors* contactSensors = nullptr;
 
             std::vector<double> prev_position_commands_;
 
