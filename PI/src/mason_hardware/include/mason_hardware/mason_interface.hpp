@@ -6,7 +6,7 @@
 
 #include "motor.h"
 
-// #include "contact_sensors.hpp"
+#include "contact_sensors.hpp"
 
 #include <geometry_msgs/msg/point.hpp>
 #include <memory>
@@ -79,7 +79,7 @@ class MasonInterface : public hardware_interface::SystemInterface {
     Motor motorR_;
     Motor motorH_;
     std::unique_ptr<Controller> controller_;
-    // ContactSensors* contactSensors = nullptr;
+    ContactSensors* contactSensors = nullptr;
 
     std::vector<double> prev_position_commands_ = {0, 0};
 

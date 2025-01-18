@@ -359,7 +359,7 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
 
     // Change the ending steps to slowly decelerate, 3 times as slow as the initial acceleration
     // velocity_rampsteps /= 2;
-    if (velocity_rampsteps > mid_positions.size()) {
+    if (velocity_rampsteps > static_cast<int>(mid_positions.size())) {
         velocity_rampsteps = static_cast<int>(mid_positions.size());
     }
     total_time = mid_positions[mid_positions.size() - velocity_rampsteps - 1].second;

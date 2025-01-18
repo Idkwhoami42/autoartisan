@@ -44,7 +44,7 @@ ContactSensors::ContactSensors(const char* chip_name, const std::vector<std::pai
     }
 
     // ret = gpiod_line_request_bulk_both_edges_events(&bulk, "gpio-monitor");
-    this->bulk.request({"", gpiod::line_request::EVENT_BOTH_EDGES, gpiod::line_request::FLAG_BIAS_PULL_UP});
+    this->bulk.request({"", gpiod::line_request::EVENT_BOTH_EDGES, /*gpiod::line_request::FLAG_BIAS_PULL_UP*/});
 
     for (const auto & pinNumber : pinNumbers) {
         this->pinMap[static_cast<int>(pinNumber.first)] = pinNumber.second;
