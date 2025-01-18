@@ -2503,10 +2503,9 @@
         <pose>0.8 0 0.5 0 0 0</pose>
       </frame> -->
 
-    <!-- Rotate 90 degrees (π/2) about the X-axis -->
-    <!-- <gazebo reference="tof_link">
+    <gazebo reference="tof_link">
         <sensor name="tof_sensor" type="gpu_lidar">
-          <pose>0 0 0 1.570796 0 0</pose> 
+          <pose>0 0 0 1.570796 0 0</pose> <!-- Rotate 90 degrees (π/2) about the X-axis -->
           <update_rate>10</update_rate>
           <topic>tof_sensor</topic>
           <ray>
@@ -2533,7 +2532,7 @@
           <always_on>1</always_on>
           <visualize>true</visualize>
         </sensor>
-      </gazebo> -->
+      </gazebo>
 
 
 
@@ -2731,7 +2730,7 @@
         rpy="0 0 0" />
     </joint>
 
-    <!-- <gazebo reference="contact_sensor_bottom_right">
+    <gazebo reference="contact_sensor_bottom_right">
       <sensor name="bottom_right_contact_sensor" type="contact">
         <collision>Bottom Right Collision</collision>
       </sensor>
@@ -2765,7 +2764,7 @@
       <sensor name="mid_left_contact_sensor" type="contact">
         <collision>Middle Left Collision</collision>
       </sensor>
-    </gazebo> -->
+    </gazebo>
 
     <link name="imu_link"></link>
 
@@ -2775,7 +2774,7 @@
       <child link="imu_link"></child>
     </joint>
 
-    <!-- <gazebo reference="imu_link">
+    <gazebo reference="imu_link">
       <sensor name="gearbox_imu" type="imu">
         <always_on>1</always_on>
         <update_rate>10.0</update_rate>
@@ -2806,7 +2805,7 @@
     </gazebo>
 
 
-    <gazebo>
+    <!-- <gazebo>
       <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
         <parameters>$(find mason_description)/description/config/mason.yaml</parameters>
       </plugin>

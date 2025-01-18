@@ -10,19 +10,19 @@ forward_position_controller:
     type: position_controllers/JointGroupPositionController
     joints:
       - MotorJointLeft
-      - MotorJointRight
+      - MotorTop
 
-forward_velocity_controller:
-  ros__parameters:
-    type: velocity_controllers/JointGroupVelocityController
-    joints:
-      - MotorJointLeft
-      - MotorJointRight
+# forward_velocity_controller:
+#   ros__parameters:
+#     type: velocity_controllers/JointGroupVelocityController
+#     joints:
+#       - MotorJointLeft
+#       - MotorTop
 
-forward_acceleration_controller:
-  ros__parameters:
-    type: forward_command_controller/ForwardCommandController
-    joints:
-      - MotorJointLeft
-      - MotorJointRight
-    interface_name: acceleration
+# forward_acceleration_controller:
+#   ros__parameters:
+#     type: forward_command_controller/ForwardCommandController
+#     joints:
+#       - MotorJointLeft
+#       - MotorTop
+#     interface_name: acceleration

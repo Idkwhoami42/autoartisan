@@ -16,6 +16,9 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         # Include all config files.
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        # (os.path.join('share', package_name, 'urdf'), glob('urdf/*.xacro')),
+        (os.path.join('share', "mason_description", "description", "urdf"), glob('urdf/*.xacro')),
+        (os.path.join('share', "mason_description", "description", "meshes"), glob('meshes/*.STL')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

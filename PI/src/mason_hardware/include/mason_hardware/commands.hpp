@@ -1,7 +1,3 @@
-#ifndef MASON_HARDWARE__COMMANDS_HPP_
-#define MASON_HARDWARE__COMMANDS_HPP_
-
-
 enum Commands : int {
     COMM_FW_VERSION = 0,
     COMM_JUMP_TO_BOOTLOADER = 1,
@@ -158,5 +154,3 @@ enum Commands : int {
     COMM_LISP_RMSG = 152,
     COMM_SHUTDOWN = 156
 };
-
-#endif // MASON_HARDWARE__COMMANDS_HPP_

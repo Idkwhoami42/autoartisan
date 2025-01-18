@@ -6,33 +6,26 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <gpiod.hpp>
+#include <atomic>
 
 class ContactSensors {
 public:
 
-    void buttonCallback(int pin);
+    std::string buttonCallback(unsigned int pin, gpiod::line_event event);
 
-    // void bottomLeftCallback();
-
-    // void leftCallback();
-
-    // void topLeftCallback();
-
-    // void bottomRightCallback();
-
-    // void rightCallback();
-
-    // void topRightCallback();
-
-    explicit ContactSensors(std::vector<std::pair<int, std::string>> pinNumbers);
+    explicit ContactSensors(const char* chip_name, const std::vector<std::pair<unsigned int, std::string>> &pinNumbers);
 
     ~ContactSensors();
 
-    std::string mostRecentlyActivated();
-
+    gpiod::line_bulk bulk;
+    gpiod::line_bulk event_lines;
+    std::atomic<bool> keepPolling{true};
+    
 private:
     std::unordered_map<int, std::string> pinMap;
     std::vector<std::string> activeSensors = {};
+    gpiod::chip chip;
 };
 
 #endif // CONTACT_SENSOR_HPP

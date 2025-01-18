@@ -1,116 +1,62 @@
-#include "mason_hardware/contact_sensors.hpp"
-
 #include <algorithm>
+#include <atomic>
 #include <iostream>
+#include <gpiod.hpp>
+#include <mutex>
+#include <stdio.h>
+#include <string.h>
+#include "../include/mason_hardware/contact_sensors.hpp"
+#include <thread>
 
-ContactSensors* globalContactSensors = nullptr;
+#define NUM_PINS 6
+#define TIMEOUT_NS 1000000000
 
-void ContactSensors::buttonCallback(int pin) {
-    // bool state = digitalRead(pin);
-    // auto it = activeSensors.begin();
-    // state ? activeSensors.insert(it, pinMap[pin])
-    //       : activeSensors.erase(std::remove(it, activeSensors.end(), pinMap[pin]));
-}
+std::vector<unsigned int> pins;
 
-// void ContactSensors::bottomLeftCallback() {
-//     // TODO: FIND ACTUAL PIN NUMBER
-//     buttonCallback(0);
-// }
-
-void globalBottomLeftInterruptHandler() {
-    if (globalContactSensors) {
-        globalContactSensors->buttonCallback(0);
+std::string ContactSensors::buttonCallback(unsigned int pin, gpiod::line_event event) {
+    int index = static_cast<int>(pin);
+    if (event.event_type == gpiod::line_event::FALLING_EDGE) {
+        return this->pinMap[pin];
     } else {
-        std::cerr << "Interrupt triggered, but no instance is set!" << std::endl;
+        return "";
     }
 }
 
-void globalLeftInterruptHandler() {
-    if (globalContactSensors) {
-        globalContactSensors->buttonCallback(0);
-    } else {
-        std::cerr << "Interrupt triggered, but no instance is set!" << std::endl;
+void getPins(size_t num, std::vector<std::pair<unsigned int, std::string>> pinNumbers) {
+    for (size_t i = 0; i < num; i++) {
+        pins.push_back(pinNumbers[i].first);
     }
 }
 
-void globalTopLeftInterruptHandler() {
-    if (globalContactSensors) {
-        globalContactSensors->buttonCallback(0);
-    } else {
-        std::cerr << "Interrupt triggered, but no instance is set!" << std::endl;
+ContactSensors::ContactSensors(const char* chip_name, const std::vector<std::pair<unsigned int, std::string>> &pinNumbers) {
+    this->chip.open(std::string(chip_name), 3);
+    if (!chip) {
+        perror("Error initializing chip");
+    }
+
+    getPins(NUM_PINS, pinNumbers);
+    std::cout << "Got GPIO offsets from pair vector" << std::endl;
+    this->bulk = this->chip.get_lines(pins);
+
+    if (!bulk) {
+        this->chip.reset();
+        std::cerr << "Error storing lines in bulk" << std::endl;
+    }
+
+    // ret = gpiod_line_request_bulk_both_edges_events(&bulk, "gpio-monitor");
+    this->bulk.request({"", gpiod::line_request::EVENT_BOTH_EDGES, gpiod::line_request::FLAG_BIAS_PULL_UP});
+
+    for (const auto & pinNumber : pinNumbers) {
+        this->pinMap[static_cast<int>(pinNumber.first)] = pinNumber.second;
     }
 }
 
-void globalTopRightInterruptHandler() {
-    if (globalContactSensors) {
-        globalContactSensors->buttonCallback(0);
-    } else {
-        std::cerr << "Interrupt triggered, but no instance is set!" << std::endl;
+ContactSensors::~ContactSensors() {
+    if (this->keepPolling.load()) {
+        std::cout << "Entered destructor" << std::endl;
+        this->keepPolling.store(false);
+        // bulk.release();
+        this->bulk.~line_bulk();
+        this->chip.~chip();
     }
-}
-
-void globalRightInterruptHandler() {
-    if (globalContactSensors) {
-        globalContactSensors->buttonCallback(0);
-    } else {
-        std::cerr << "Interrupt triggered, but no instance is set!" << std::endl;
-    }
-}
-
-void globalBottomRightInterruptHandler() {
-    if (globalContactSensors) {
-        globalContactSensors->buttonCallback(0);
-    } else {
-        std::cerr << "Interrupt triggered, but no instance is set!" << std::endl;
-    }
-}
-
-// void ContactSensors::leftCallback() {
-//     // TODO: FIND ACTUAL PIN NUMBER
-//     buttonCallback(0);
-// }
-
-// void ContactSensors::topLeftCallback() {
-//     // TODO: FIND ACTUAL PIN NUMBER
-//     buttonCallback(0);
-// }
-
-// void ContactSensors::bottomRightCallback() {
-//     // TODO: FIND ACTUAL PIN NUMBER
-//     buttonCallback(0);
-// }
-
-// void ContactSensors::rightCallback() {
-//     // TODO: FIND ACTUAL PIN NUMBER
-//     buttonCallback(0);
-// }
-
-// void ContactSensors::topRightCallback() {
-//     // TODO: FIND ACTUAL PIN NUMBER
-//     buttonCallback(0);
-// }
-
-ContactSensors::ContactSensors(std::vector<std::pair<int, std::string>> pinNumbers) {
-    // wiringPiSetup();
-    // std::vector<void (*)(void)> functions = {&globalBottomLeftInterruptHandler, &globalLeftInterruptHandler,
-    //                                          &globalTopLeftInterruptHandler,    &globalTopRightInterruptHandler,
-    //                                          &globalRightInterruptHandler,      &globalBottomRightInterruptHandler};
-    // for (size_t i = 0; i < pinNumbers.size(); i++) {
-    //     this->pinMap[pinNumbers[i].first] = pinNumbers[i].second;
-    //     pinMode(pinNumbers[i].first, INPUT);
-    //     wiringPiISR(pinNumbers[i].first, INT_EDGE_BOTH, functions[i]);
-    // }
-
-    // ContactSensors* globalContactSensors = this;
-    // // for (size_t i = 0; i < pinNumbers.size(); i++) {
-    //     wiringPiISR(pinNumbers[i].first, INT_EDGE_BOTH, functions[i]);
-    // }
-}
-
-ContactSensors::~ContactSensors() = default;
-
-std::string ContactSensors::mostRecentlyActivated() {
-    // noInterrupts();
-    return (activeSensors.size() > 0) ? activeSensors[0] : "";
-    // interrupts();
 }
