@@ -13,8 +13,8 @@
           <param name="horizontal_motor_name">MotorTop</param>
           <param name="baud_rate">115200</param>
           <!-- <param name="timeout_ms">50</param> -->
-          <param name="id_left">0</param>
-          <param name="id_right">1</param>
+          <param name="id_left">125</param>
+          <param name="id_right">72</param>
           <param name="id_horizontal">1</param>
         </hardware>
       </xacro:unless>
