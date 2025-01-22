@@ -167,5 +167,12 @@ def generate_launch_description():
         robot_controller_spawner,
         delay_joint_state_broadcaster_after_robot_controller_spawner,
     ]
+    
+    nav_node = Node(
+        package="autoartisan2",
+        executable="navigation_node",
+    )
 
-    return LaunchDescription(declared_arguments + nodes)
+    ld =  LaunchDescription(declared_arguments + nodes)
+    ld.add_action(nav_node)
+    return ld

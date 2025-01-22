@@ -5,11 +5,15 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp/publisher.hpp"
-// #include "rclcpp/subscriber.hpp"
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/point32.hpp>
 #include <sensor_msgs/msg/point_cloud.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
+
+#define DEG_PASSED true
+#define WALL_H_CM 91.75
+#define WALL_W_CM 99.5
 
 struct JointingPath {
     std::pair<float, float> start = std::make_pair(0, 0);
@@ -30,6 +34,10 @@ public:
         this->t = std::chrono::system_clock::now();
         this->position = std::make_pair(x, y);
     }
+
+    std::pair<float, float> getPos() {
+        return this->position;
+    }
 private:
     std::chrono::time_point<std::chrono::system_clock> t;
     std::pair<float, float> position;
@@ -39,7 +47,6 @@ class NavigationNode : public rclcpp::Node
 {
 public:
     NavigationNode() : Node("nav_node") {
-        // /forward_position_controller/commands std_msgs/msg/Float64MultiArray
         this->update = Update(std::make_pair(0.0, 0.0));
         
         auto homing_callback =
@@ -48,24 +55,27 @@ public:
                 if (msg->z) {
                     this->wallSpanDegX = msg->x;
                     this->wallSpanDegY = msg->y;
+                    this->multiplier_x = (DEG_PASSED) ? 1 : static_cast<float>(msg->x / WALL_W_CM);
+                    this->multiplier_y = (DEG_PASSED) ? 1 : static_cast<float>(msg->y / WALL_H_CM);
                 }
             };
 
         auto tracking_callback =
-            [this](std_msgs::msg::Float64MultiArray::UniquePtr msg) -> void {
-                // In the hardware interface z is set based on whether homing was successful
-                this->update.updatePos(msg->data[0], msg->data[1]);
+            [this](sensor_msgs::msg::JointState::UniquePtr msg) -> void {
+                float y = (msg->name[0] == "MotorJointLeft") ? msg->position[0] : msg->position[1];
+                float x = (msg->name[0] == "MotorTop") ? msg->position[0] : msg->position[1];
+                this->update.updatePos(x, y);
             };
 
         auto img_proc_callback =
             [this](sensor_msgs::msg::PointCloud::UniquePtr msg) -> void {
-                // Call the member function from within the lambda
                 this->imgProcCallback(std::move(msg));
             };
         
         this->homing_subscription_ = this->create_subscription<geometry_msgs::msg::Point>("limits", 10, homing_callback);
-        this->position_subscription_ = this->create_subscription<std_msgs::msg::Float64MultiArray>("forward_position_controller/position", 10, tracking_callback);
-        // this->position_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("forward_position_controller/position", 10, trackingCallback);
+        this->position_subscription_ = this->create_subscription<sensor_msgs::msg::JointState>("joint_state", 10, tracking_callback);
+        this->position_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("forward_position_controller/commands", 10);
+        this->path_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("path", 10);
         this->img_proc_subscription_ = this->create_subscription<sensor_msgs::msg::PointCloud>("detection", 10, img_proc_callback);
     }
 
@@ -125,7 +135,6 @@ public:
         return index;
     }
 
-    // OPTION 2: CLUSTERING
     std::vector<std::vector<std::pair<float, float>>> clusteringPoints(std::vector<geometry_msgs::msg::Point32> points) {
         std::sort(points.begin(), points.end(), [](geometry_msgs::msg::Point32 a, geometry_msgs::msg::Point32 b)
                                     {
@@ -228,19 +237,6 @@ public:
         return merged;
     }
 
-
-    // void homingCallback(geometry_msgs::msg::Point msg) {
-    //     // In the hardware interface z is set based on whether homing was successful
-    //     if (msg.z) {
-    //         this->wallSpanDegX = msg.x;
-    //         this->wallSpanDegY = msg.y;
-    //     }
-    // }
-
-    // void trackingCallback(std_msgs::msg::Float64MultiArray msg) {
-    //     this->update.updatePos(msg.data[0], msg.data[1]);
-    // }
-
     void imgProcCallback(sensor_msgs::msg::PointCloud::UniquePtr msg) {
         auto clusters = clusteringPoints(msg->points);
         std::vector<JointingPath> paths;
@@ -289,13 +285,49 @@ public:
         // }
     }
 
+    void jointingPathPublisher() {
+        auto pathMsg = std_msgs::msg::Float64MultiArray();
+        auto posMsg = std_msgs::msg::Float64MultiArray();
+        for (JointingPath path : this->paths) {
+            float currentX = this->update.getPos().first;
+            float currentY = this->update.getPos().second;
+
+            if (!path.traversed) {
+                if (abs(path.start.first - currentX) < 1e-1 && abs(path.start.second - currentY) < 1e-1) {
+                    pathMsg.data = {path.start.first*this->multiplier_x, path.start.second*this->multiplier_y, 
+                        path.end.first*this->multiplier_x, path.end.second*this->multiplier_y};
+                } else if (abs(path.end.first - currentX) < 1e-1 && abs(path.end.second - currentY) < 1e-1) {
+                    pathMsg.data = {path.end.first*this->multiplier_x, path.end.second*this->multiplier_y, 
+                        path.start.first*this->multiplier_x, path.start.second*this->multiplier_y};
+                } else {
+                    pathMsg.data = {path.start.first, path.start.second, path.end.first, path.end.second};
+                    posMsg.data = {path.start.first, path.start.second};
+                    this->position_publisher_->publish(posMsg);
+                    while (abs(path.start.first - currentX) > 1e-1 || abs(path.start.second - currentY) > 1e-1) {
+                        currentX = this->update.getPos().first;
+                        currentY = this->update.getPos().second;
+                    }
+                }
+                this->path_publisher_->publish(pathMsg);
+                while (abs(pathMsg.data[2] - currentX) > 1e-1 || abs(pathMsg.data[3] - currentY) > 1e-1) {
+                    currentX = this->update.getPos().first;
+                    currentY = this->update.getPos().second;
+                }
+                path.traversed = true;
+            }
+        }
+    }
+
 private:
     rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr homing_subscription_;
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr position_subscription_;
+    rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr position_subscription_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr position_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr path_publisher_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud>::SharedPtr img_proc_subscription_;
-    double wallSpanDegX = -1;
-    double wallSpanDegY = -1;
+    float multiplier_x = 1;
+    float multiplier_y = 1;
+    float wallSpanDegX = -1;
+    float wallSpanDegY = -1;
     Update update;
     std::vector<JointingPath> paths = {};
 };

@@ -12,6 +12,7 @@ find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(rclcpp_components REQUIRED)
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
@@ -22,6 +23,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rcpputils
   realtime_tools
   geometry_msgs
+  std_msgs
   rmw
   rclcpp_components
   # rosidl_default_generators

@@ -248,6 +248,7 @@ hardware_interface::CallbackReturn MasonInterface::on_init(
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - DEVICE: %s", device.c_str());
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - BAUD_RATE: %d", baudRate);
 
+    // TODO: UPDATE PIN NUMBERS 
     std::vector<std::pair<unsigned int, std::string>> contactSensorPins = {
         {1, "bottom_left"}, {13, "left"},  {3, "top_left"},
         {4, "top_right"},   {26, "right"}, {2, "bottom_right"}};

@@ -30,10 +30,12 @@
 #include "rclcpp/time.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
+#include <std_msgs/msg/float64_multi_array.hpp>
 
 namespace mason_hardware {
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
+// Declared separate class for homing publisher bc it only needs to spin once at the beginning
 class HomingPublisher : public rclcpp::Node {
    public:
     HomingPublisher();
