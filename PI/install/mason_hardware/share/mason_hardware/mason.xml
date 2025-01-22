@@ -1,9 +1,0 @@
-<library path="mason_hardware">
-  <class name="mason_hardware/MasonInterface"
-         type="mason_hardware::MasonInterface"
-         base_class_type="hardware_interface::SystemInterface">
-    <description>
-      ...
-    </description>
-  </class>
-</library>
