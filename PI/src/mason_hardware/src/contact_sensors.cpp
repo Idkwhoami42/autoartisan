@@ -8,7 +8,6 @@
 #include "../include/mason_hardware/contact_sensors.hpp"
 #include <thread>
 
-#define NUM_PINS 6
 #define TIMEOUT_NS 1000000000
 
 std::vector<unsigned int> pins;
@@ -22,9 +21,9 @@ std::string ContactSensors::buttonCallback(unsigned int pin, gpiod::line_event e
     }
 }
 
-void getPins(size_t num, std::vector<std::pair<unsigned int, std::string>> pinNumbers) {
-    for (size_t i = 0; i < num; i++) {
-        pins.push_back(pinNumbers[i].first);
+void getPins(std::vector<std::pair<unsigned int, std::string>> pinNumbers) {
+    for (auto &pin : pinNumbers) {
+        pins.push_back(pin.first);
     }
 }
 
@@ -34,7 +33,7 @@ ContactSensors::ContactSensors(const char* chip_name, const std::vector<std::pai
         perror("Error initializing chip");
     }
 
-    getPins(NUM_PINS, pinNumbers);
+    getPins(pinNumbers);
     std::cout << "Got GPIO offsets from pair vector" << std::endl;
     this->bulk = this->chip.get_lines(pins);
 

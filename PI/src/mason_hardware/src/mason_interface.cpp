@@ -1,9 +1,9 @@
-#include "../include/mason_hardware/mason_interface.hpp"
-// #include "../include/mason_hardware/contact_sensors.hpp"
+#include "mason_hardware/mason_interface.hpp"
 
 #include <stdint.h>
 
 #include <chrono>
+#include <future>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -42,129 +42,114 @@ MasonInterface::~MasonInterface() {
     if (this->serial->is_open()) {
         this->serial->close();
     }
+
+    if (this->write_thread_.joinable()) this->write_thread_.join();
 }
 
-void pollPins(ContactSensors* contactSensors) {
+void pollPins(ContactSensors *contactSensors) {
     while (contactSensors->keepPolling.load()) {
         if (contactSensors) {
             contactSensors->event_lines = contactSensors->bulk.event_wait(t);
             if (!contactSensors->event_lines.empty()) {
-                for (const auto& event : contactSensors->event_lines) {
+                for (const auto &event : contactSensors->event_lines) {
                     std::unique_lock<std::mutex> lock(activeSensorMutex);
-                    activeSensor = contactSensors->buttonCallback(event.offset(),
-                    event.event_read());
+                    activeSensor =
+                        contactSensors->buttonCallback(event.offset(), event.event_read());
                 }
             }
         }
     }
 }
 
-void MasonInterface::homingCallback() {
+bool MasonInterface::homingCallback() {
     // START_COMMENT
     try {
-        auto name_pos_x = std::string("MotorTop/") + hardware_interface::HW_IF_POSITION;
-        auto name_pos_y = std::string("MotorJointLeft/") + hardware_interface::HW_IF_POSITION;
-        this->motorL_.doHoming(this->serial.get());
-        this->homing_done_ = this->motorL_.verifyHoming();
-        this->motorR_.doHoming(this->serial.get());
-        this->homing_done_ = this->homing_done_ && this->motorR_.verifyHoming();
-        this->motorH_.doHoming(this->serial.get());
-        this->homing_done_ = this->homing_done_ && this->motorH_.verifyHoming();
-
-        // this->homing_done_ = true;
-
-        for (auto &motor : {&this->motorH_}) {
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Homing for motor with id %d",
-                        motor->id);
+        std::string name_pos_y =
+            std::string("MotorJointLeft/") + hardware_interface::HW_IF_POSITION;
+        for (auto &motor : {&this->motorH_, &this->motorL_, &this->motorR_}) {
             motor->doHoming(this->serial.get());
             if (!motor->verifyHoming()) {
                 RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"),
                              "Homing went wrong with motor with id %d", motor->id);
-                this->homing_done_ = false;
+                return false;
             } else {
                 RCLCPP_INFO(rclcpp::get_logger("MasonInterface"),
                             "Homing went well with motor with id %d", motor->id);
             }
         }
 
-        // double init_pos = 360;
-        while (true) {
-            std::string sensor = "";
-            {
-                std::unique_lock<std::mutex> lock(activeSensorMutex);
-                sensor = activeSensor;
-            }
-            if (sensor != "right") {
-                // this->controller_->goToPos(this->serial.get(), init_pos, {this->motorH_});
-                this->motorH_.setDuty(this->serial.get(), 0.3);
-            }
-            if (sensor == "right") break;
-        }
-
-        // int i = 0;
-        // while (i < 8) {
-        //     this->controller_->goToPos(this->serial.get(), init_pos, {this->motorH_});
-        //     init_pos = init_pos + 360;
-        //     i += 1;
+        // // double init_pos = 360;
+        // while (true) {
+        //     std::string sensor = "";
+        //     {
+        //         std::unique_lock<std::mutex> lock(activeSensorMutex);
+        //         sensor = activeSensor;
+        //     }
+        //     if (sensor != "RIGHT") {
+        //         this->motorH_.setDuty(this->serial.get(), 0.3);
+        //     }
+        //     if (sensor == "RIGHT") break;
         // }
-        this->motorH_.setDuty(this->serial.get(), 0);
 
-        this->max_x_ = this->motorH_.pos;
-        // This was not technically a command, but don't want the motor to try to travel to a position it's already at
-        this->prev_position_commands_[0] = this->max_x_;
+        // // int i = 0;
+        // // while (i < 8) {
+        // //     this->controller_->goToPos(this->serial.get(), init_pos, {this->motorH_});
+        // //     init_pos = init_pos + 360;
+        // //     i += 1;
+        // // }
+        // this->motorH_.setDuty(this->serial.get(), 0);
 
-        // init_pos = 360.0;
-        while (true) {
-            std::string sensor = "";
-            {
-                std::unique_lock<std::mutex> lock(activeSensorMutex);
-                sensor = activeSensor;
-            }
-            if (sensor != "top-right" || sensor != "top-left") {
-                this->motorL_.setDuty(this->serial.get(), 0.3);
-                this->motorR_.setDuty(this->serial.get(), 0.3);
-                // this->controller_->goToPos(this->serial.get(), init_pos, {this->motorL_, this->motorR_});
-                // init_pos = init_pos + 360.0;
-            }
-            if (sensor == "top-right" || sensor == "top-left") break;
-        }
-        // i = 0;
-        // while (i < 8) {
-        //     this->controller_->goToPos(this->serial.get(), init_pos, {this->motorL_,
-        //     this->motorR_}); init_pos = init_pos + 360; i += 1;
+        // this->max_x_ = this->motorH_.pos;
+        // // This was not technically a command, but don't want the motor to try to travel to a
+        // // position it's already at
+        // this->prev_position_commands_[0] = this->max_x_;
+
+        // // init_pos = 360.0;
+        // while (true) {
+        //     std::string sensor = "";
+        //     {
+        //         std::unique_lock<std::mutex> lock(activeSensorMutex);
+        //         sensor = activeSensor;
+        //     }
+        //     if (sensor != "TOP") {
+        //         this->motorL_.setDuty(this->serial.get(), 0.3);
+        //         this->motorR_.setDuty(this->serial.get(), 0.3);
+        //         // this->controller_->goToPos(this->serial.get(), init_pos, {this->motorL_,
+        //         // this->motorR_}); init_pos = init_pos + 360.0;
+        //     }
+        //     if (sensor == "TOP") break;
         // }
-        this->motorR_.setDuty(this->serial.get(), 0);
-        this->motorL_.setDuty(this->serial.get(), 0);
+        // // i = 0;
+        // // while (i < 8) {
+        // //     this->controller_->goToPos(this->serial.get(), init_pos, {this->motorL_,
+        // //     this->motorR_}); init_pos = init_pos + 360; i += 1;
+        // // }
+        // this->motorR_.setDuty(this->serial.get(), 0);
+        // this->motorL_.setDuty(this->serial.get(), 0);
 
-        this->max_y_ = (this->motorR_.pos + this->motorL_.pos) / 2.0;
-        set_state(name_pos_y, this->max_y_);
-        this->prev_position_commands_[1] = this->max_y_;
+        // this->max_y_ = (this->motorR_.pos + this->motorL_.pos) / 2.0;
+        // set_state(name_pos_y, this->max_y_);
+        // this->prev_position_commands_[1] = this->max_y_;
     } catch (std::exception &e) {
-        this->homing_done_ = false;
         std::cout << "Error during homing: " << e.what() << std::endl;
         RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"), "Homing failed");
-        return;
+        return false;
     }
     // END_COMMENT
-
-    if (!this->homing_done_) {
-        RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"), "Homing failed");
-        return;
-    }
 
     initializePublisher();
 
     this->executor_->spin_node_once(this->homing_pub_);
-    this->homing_pub_->publishLimits(this->max_x_, this->max_y_, this->homing_done_);
+    this->homing_pub_->publishLimits(this->max_x_, this->max_y_, true);
 
-    // this->controller_->goToPos(this->serial.get(), 180, {&this->motorH_});
-    // this->controller_->goToPos(this->serial.get(), 0, {&this->motorH_});
+    return true;
 }
 
 void MasonInterface::returnToStart() {
     // START_COMMENT
     try {
-        if (!this->homing_done_) {
+        // TODO change this
+        if (true) {
             // double init_pos = -360.0;
             while (true) {
                 std::string sensor = "";
@@ -172,10 +157,10 @@ void MasonInterface::returnToStart() {
                     std::unique_lock<std::mutex> lock(activeSensorMutex);
                     sensor = activeSensor;
                 }
-                if (sensor != "left") {
+                if (sensor != "LEFT") {
                     this->motorH_.setDuty(this->serial.get(), -0.3);
                 }
-                if (sensor == "left") break;
+                if (sensor == "LEFT") break;
             }
 
             this->motorH_.setDuty(this->serial.get(), 0.0);
@@ -187,23 +172,23 @@ void MasonInterface::returnToStart() {
                     std::unique_lock<std::mutex> lock(activeSensorMutex);
                     sensor = activeSensor;
                 }
-                if (sensor != "bottom-left") {
+                if (sensor != "BOTTOM") {
                     this->motorL_.setDuty(this->serial.get(), -0.3);
                     this->motorR_.setDuty(this->serial.get(), -0.3);
-                    // this->controller_->goToPos(this->serial.get(), 360, {this->motorL_, this->motorR_});
-                    // init_pos = init_pos - 360;
+                    // this->controller_->goToPos(this->serial.get(), 360, {this->motorL_,
+                    // this->motorR_}); init_pos = init_pos - 360;
                 }
-                if (sensor == "bottom-left") break;
+                if (sensor == "BOTTOM") break;
             }
-            
+
             this->motorR_.setDuty(this->serial.get(), 0);
             this->motorL_.setDuty(this->serial.get(), 0);
         } else {
             this->controller_->goToPos(this->serial.get(), 0.0,
                                        {&this->motorH_, &this->motorL_, &this->motorR_});
         }
-        this->prev_position_commands_[0] = 0.0;
-        this->prev_position_commands_[1] = 0.0;
+        this->prev_horizontal_position_ = 0.0;
+        this->prev_vertical_position_ = 0.0;
     } catch (std::exception &e) {
         this->at_starting_point_ = false;
         printf("Error whilst returning to start: %s.\n", e.what());
@@ -225,34 +210,28 @@ hardware_interface::CallbackReturn MasonInterface::on_init(
         return hardware_interface::CallbackReturn::ERROR;
     }
 
-    std::string device = info_.hardware_parameters["device"].c_str();
-    std::string left_motor_name = info_.hardware_parameters["left_motor_name"].c_str();
-    std::string right_motor_name = info_.hardware_parameters["right_motor_name"].c_str();
-    std::string horizontal_motor_name = info_.hardware_parameters["horizontal_motor_name"].c_str();
-    int baudRate = std::stoi(info_.hardware_parameters["baud_rate"]);
+    std::string device = info_.hardware_parameters["device"];
+    std::string left_motor_name = info_.hardware_parameters["left_motor_name"];
+    std::string right_motor_name = info_.hardware_parameters["right_motor_name"];
+    std::string horizontal_motor_name = info_.hardware_parameters["horizontal_motor_name"];
     int left_motor_id = std::stoi(info_.hardware_parameters["id_left"]);
     int right_motor_id = std::stoi(info_.hardware_parameters["id_right"]);
     int horizontal_motor_id = std::stoi(info_.hardware_parameters["id_horizontal"]);
-    // double timeout_ms = std::stod(info_.hardware_parameters["timeout_ms"]);
 
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - LEFT_MOTOR_NAME: %s",
-                left_motor_name.c_str());
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - RIGHT_MOTOR_NAME: %s",
-                right_motor_name.c_str());
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - HORIZONTAL_MOTOR_NAME: %s",
-                horizontal_motor_name.c_str());
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - LEFT_MOTOR_ID: %d", left_motor_id);
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - RIGHT_MOTOR_ID: %d", right_motor_id);
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - HORIZONTAL_MOTOR_ID: %d",
-                horizontal_motor_id);
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - DEVICE: %s", device.c_str());
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "PARAM - BAUD_RATE: %d", baudRate);
+    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"),
+                "PARAM - LEFT_MOTOR_NAME: %s\n"
+                "PARAM - RIGHT_MOTOR_NAME: %s\n"
+                "PARAM - HORIZONTAL_MOTOR_NAME: %s\n"
+                "PARAM - LEFT_MOTOR_ID: %d\n"
+                "PARAM - RIGHT_MOTOR_ID: %d\n"
+                "PARAM - HORIZONTAL_MOTOR_ID: %d\n"
+                "PARAM - DEVICE: %s\n",
+                left_motor_name.c_str(), right_motor_name.c_str(), horizontal_motor_name.c_str(),
+                left_motor_id, right_motor_id, horizontal_motor_id, device.c_str());
 
     // TODO: UPDATE PIN NUMBERS 
     std::vector<std::pair<unsigned int, std::string>> contactSensorPins = {
-        {1, "bottom_left"}, {13, "left"},  {3, "top_left"},
-        {4, "top_right"},   {26, "right"}, {2, "bottom_right"}};
-
+        {27, "RIGHT"}, {22, "TOP"}, {23, "BOTTOM"}, {24, "LEFT"}};
     // ContactSensors comms(chip, contactSensorPins);
 
     // this->contactSensors = &comms;
@@ -280,22 +259,12 @@ hardware_interface::CallbackReturn MasonInterface::on_init(
         this->serial->set_option(boost::asio::serial_port_base::flow_control(
             boost::asio::serial_port_base::flow_control::none));
 
-        // log the ids
-        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Left motor id: %d", left_motor_id);
-        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Right motor id: %d", right_motor_id);
-        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Horizontal motor id: %d",
-                    horizontal_motor_id);
-
         this->motorL_ = Motor(left_motor_name, left_motor_id, serial.get(), true);
         this->motorR_ = Motor(right_motor_name, right_motor_id, serial.get(), true);
-        this->motorH_ = Motor(horizontal_motor_name, horizontal_motor_id, serial.get(), false);
+        this->motorH_ = Motor(horizontal_motor_name, horizontal_motor_id, serial.get(), true);
 
-
-        this->controller_.reset(new Controller(this->serial.get(), {}));
-
-        // END_COMMENT
-
-        this->prev_position_commands_.resize(2, std::numeric_limits<double>::quiet_NaN());
+        this->controller_.reset(new Controller(
+            this->serial.get(), {left_motor_id, right_motor_id, horizontal_motor_id}));
 
     } catch (std::exception &e) {
         RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"), "Error occurred: %s.", e.what());
@@ -305,7 +274,7 @@ hardware_interface::CallbackReturn MasonInterface::on_init(
     this->homing_pub_ = std::make_shared<HomingPublisher>();
 
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Hardware interface activated.");
-    pollingThread = std::thread(pollPins, this->contactSensors);
+    // pollingThread = std::thread(pollPins, this->contactSensors);
 
     return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -319,18 +288,14 @@ hardware_interface::CallbackReturn MasonInterface::on_activate(
     }
 
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Executing homing sequence...please wait...");
-    while (!this->at_starting_point_) {
-        this->returnToStart();
-        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Mason is at start point: %d",
-                    this->at_starting_point_);
-    }
-    // while (!this->homing_done_) {
-    //     this->homingCallback();
-    //     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Mason is homed: %d",
-    //     this->homing_done_);
+    // while (!this->at_starting_point_) {
+    //     this->returnToStart();
+    //     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Mason is at start point: %d",
+    //                 this->at_starting_point_);
     // }
-    this->homingCallback();
-    if (!this->homing_done_) {
+
+    bool homing_done = this->homingCallback();
+    if (!homing_done) {
         RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"), "Homing failed");
         return hardware_interface::CallbackReturn::ERROR;
     }
@@ -344,7 +309,7 @@ hardware_interface::CallbackReturn MasonInterface::on_deactivate(
     const rclcpp_lifecycle::State & /*previous_state*/) {
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Deactivating ...please wait...");
 
-    this->returnToStart();
+    // this->returnToStart();
     // Close port if open
     if (this->serial->is_open()) {
         this->serial->close();
@@ -360,85 +325,99 @@ hardware_interface::CallbackReturn MasonInterface::on_deactivate(
 hardware_interface::return_type MasonInterface::read(const rclcpp::Time & /*time*/,
                                                      const rclcpp::Duration & /*period*/) {
     if (!this->serial->is_open()) {
+        RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"), "Serial port is not open");
         return hardware_interface::return_type::ERROR;
     }
 
-    for (std::size_t i = 0; i < info_.joints.size(); i++) {
-        const auto name_pos = info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION;
-        if (info_.joints[i].name == this->motorH_.joint_name) {
-            set_state(name_pos, this->motorH_.pos);
-        }
-
-        if (info_.joints[i].name == this->motorL_.joint_name) {
-            if (double diff = std::abs((this->motorR_.pos - this->motorL_.pos)); diff > 2) {
-                return hardware_interface::return_type::ERROR;
-            }
-            set_state(name_pos, this->motorL_.pos);
-        }
+    if (!check_joints()) {
+        return hardware_interface::return_type::ERROR;
     }
+
+    std::string horizontal_name_pos = motorH_.joint_name + "/" + hardware_interface::HW_IF_POSITION;
+    std::string left_name_pos = motorL_.joint_name + "/" + hardware_interface::HW_IF_POSITION;
+
+    if (double diff = std::abs((this->motorR_.pos - this->motorL_.pos)); diff >= 2) {
+        RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"),
+                     "Difference between right and left motors is too big; diff = %f", diff);
+        return hardware_interface::return_type::ERROR;
+    }
+
+    set_state(horizontal_name_pos, this->motorH_.pos);
+    set_state(left_name_pos, this->motorL_.pos);
 
     return hardware_interface::return_type::OK;
 }
 
-void MasonInterface::updatePosX(const auto name_pos) {
-    double desired_pos = std::clamp(0.0, get_command(name_pos), this->max_x_);
+void MasonInterface::updatePos(Command horizontal_command, Command vertical_command) {
+    auto &[horizontal_pos, horizontal_name_pos, skipHorizontal] = horizontal_command;
+    auto &[vertical_pos, left_name_pos, skipVertical] = vertical_command;
 
-    this->controller_->goToPos(this->serial.get(), desired_pos, {&this->motorH_});
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command written for x position: %f",
-                desired_pos);
-    set_state(name_pos, desired_pos);
-}
+    // TODO: remove this
+    // horizontal_pos = std::clamp(0.0, horizontal_pos, this->max_x_);
+    // vertical_pos = std::clamp(0.0, vertical_pos, this->max_y_);
 
-void MasonInterface::updatePosY(const auto name_pos) {
-    double desired_pos = std::clamp(0.0, get_command(name_pos), this->max_y_);
+    if (!skipHorizontal) {
+        this->controller_->goToPos(this->serial.get(), horizontal_pos, {&this->motorH_});
+        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command written for x position: %f",
+                    horizontal_pos);
+        set_state(horizontal_name_pos, horizontal_pos);
+    }
 
-    this->controller_->goToPos(this->serial.get(), desired_pos, {&this->motorL_, &this->motorR_});
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command written for y position: %f",
-                desired_pos);
-    set_state(name_pos, desired_pos);
+    if (!skipVertical) {
+        // this->controller_->goToPos(this->serial.get(), vertical_pos, {&this->motorL_,
+        // &this->motorR_}); RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command written for
+        // y position: %f",
+        //             vertical_pos);
+        // set_state(vertical_name_pos, vertical_pos);
+    }
 }
 
 hardware_interface::return_type MasonInterface::write(const rclcpp::Time & /*time*/,
                                                       const rclcpp::Duration & /*period*/) {
     if (!this->serial->is_open()) {
+        RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"), "Serial port is not open");
         return hardware_interface::return_type::ERROR;
     }
-    // RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Write function called!");
-    for (size_t i = 0; i < info_.joints.size(); i++) {
 
-        if (info_.joints[i].name != this->motorH_.joint_name) continue;
-
-        const auto name_pos = info_.joints[i].name + "/" + hardware_interface::HW_IF_POSITION;
-        // RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Joint: %s", name_pos.c_str());
-        const double cmd = get_command(name_pos);
-        if (!std::isnan(cmd)) {
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command: %f, index %ld", cmd, i);
-            double diff = std::abs(this->prev_position_commands_[i] - cmd);
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Diff: %f", diff);
-            if (diff >= 1e-1) {
-                RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Diff: %f", diff);
-                if (info_.joints[i].name == this->motorH_.joint_name) {
-                    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"),
-                                "Writing commands for x position . . .");
-                    updatePosX(name_pos);
-                }
-
-                if (info_.joints[i].name == this->motorL_.joint_name) {
-                    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"),
-                                "Writing commands for y position . . .");
-                    updatePosY(name_pos);
-                }
-                this->prev_position_commands_[i] = cmd;
-                RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Previous command: %f",
-                            this->prev_position_commands_[i]);
-                RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Successfully navigated to position");
-            }
-        }
+    if (!check_joints()) {
+        return hardware_interface::return_type::ERROR;
     }
+
+    std::string horizontal_name_pos = motorH_.joint_name + "/" + hardware_interface::HW_IF_POSITION;
+    std::string left_name_pos = motorL_.joint_name + "/" + hardware_interface::HW_IF_POSITION;
+
+    double horizontal_cmd = get_command(horizontal_name_pos);
+    double left_cmd = get_command(left_name_pos);
+
+    bool skipHorizontal = std::isnan(horizontal_cmd) ||
+                          std::abs(this->prev_horizontal_position_ - horizontal_cmd) <= 1;
+    bool skipVertical =
+        std::isnan(left_cmd) || std::abs(this->prev_vertical_position_ - left_cmd) <= 1;
+
+    if (!skipHorizontal) this->prev_horizontal_position_ = horizontal_cmd;
+    if (!skipVertical) this->prev_vertical_position_ = left_cmd;
+
+    this->write_thread_ = std::thread(&MasonInterface::updatePos, this,
+                                      Command{horizontal_cmd, horizontal_name_pos, skipHorizontal},
+                                      Command{left_cmd, left_name_pos, skipVertical});
 
     return hardware_interface::return_type::OK;
 }
-}  // namespace mason_hardware
 
+bool MasonInterface::check_joints() {
+    if (info_.joints.size() != 2) {
+        RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"), "Number of joints is not 2");
+        return false;
+    }
+
+    if (info_.joints[0].name != motorH_.joint_name || info_.joints[1].name != motorL_.joint_name) {
+        RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"), "Joint names are not correct");
+        return false;
+    }
+
+    return true;
+}
+
+}  // namespace mason_hardware
 #include "pluginlib/class_list_macros.hpp"
 PLUGINLIB_EXPORT_CLASS(mason_hardware::MasonInterface, hardware_interface::SystemInterface)
