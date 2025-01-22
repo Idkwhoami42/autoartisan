@@ -109,7 +109,7 @@ void setup() {
     rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
     rcl_init_options_init(&init_options, allocator);
     rcl_init_options_set_domain_id(&init_options, 86);
-    RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator);)
+    RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
     // RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
 
     // create node
