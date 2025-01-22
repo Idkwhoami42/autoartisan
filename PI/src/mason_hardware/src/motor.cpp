@@ -1,4 +1,4 @@
-#include "../include/mason_hardware/motor.h"
+#include "mason_hardware/motor.h"
 
 #include <unistd.h>
 
@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <iostream>
 #include <mutex>
 #include <random>
@@ -15,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-#include "../include/mason_hardware/crc.h"
+#include "crc.h"
 
 std::mutex mtx;
 
@@ -126,6 +127,10 @@ void Motor::setDuty(boost::asio::serial_port* serial, const double duty) const {
 }
 
 void Motor::setPos(boost::asio::serial_port* serial, const double pos) {
+    if (!this->homed) {
+        std::cout << "This motor is not homed, aborting" << std::endl;
+        return;
+    }
     // this->getValues(serial);
     const std::vector<uint8_t> new_bytes = Package::packEndian(
         static_cast<int>((static_cast<double>(static_cast<int>(pos + this->offset) % 360) * 1e6)));
@@ -141,6 +146,74 @@ void Motor::setPos(boost::asio::serial_port* serial, const double pos) {
     pos_package.crc[0] = new_crc >> 8 & 0xFF;
     pos_package.crc[1] = new_crc & 0xFF;
     pos_package.send(serial);
+}
+
+uint32_t Motor::buffer_append_float32_auto(float number) {
+    // Set subnormal numbers to 0 as they are not handled properly
+    // using this method.
+    if (fabsf(number) < 1.5e-38) {
+        number = 0.0;
+    }
+
+    int e = 0;
+    float sig = frexpf(number, &e);
+    float sig_abs = fabsf(sig);
+    uint32_t sig_i = 0;
+
+    if (sig_abs >= 0.5) {
+        sig_i = (uint32_t)((sig_abs - 0.5f) * 2.0f * 8388608.0f);
+        e += 126;
+    }
+
+    uint32_t res = ((e & 0xFF) << 23) | (sig_i & 0x7FFFFF);
+    if (sig < 0) {
+        res |= 1U << 31;
+    }
+
+    return res;
+}
+
+void Motor::setDerivativeGain(boost::asio::serial_port& serial, float gain) {
+    Package p;
+    p.encodeCommand(COMM_FORWARD_CAN, {this->id, COMM_GET_MCCONF});
+    p.send(&serial);
+
+    std::vector<uint8_t> buffer(484);
+    boost::asio::read(serial, boost::asio::buffer(buffer, 484));
+
+    Package p2;
+
+    auto new_buffer = std::vector(buffer.begin(), buffer.end());
+
+    auto newpid = buffer_append_float32_auto(gain);
+    new_buffer[355] = newpid >> 24;
+    new_buffer[356] = newpid >> 16;
+    new_buffer[357] = newpid >> 8;
+    new_buffer[358] = newpid;
+    new_buffer[3] = COMM_SET_MCCONF;
+
+    uint16_t new_buffer2_length = (buffer[1] << 8 | buffer[2]) + 2;
+    std::vector<uint8_t> new_buffer2 = {3, static_cast<uint8_t>(new_buffer2_length >> 8),
+                                        static_cast<uint8_t>(new_buffer2_length & 0xFF),
+                                        COMM_FORWARD_CAN, static_cast<uint8_t>(this->id)};
+
+    new_buffer2.insert(new_buffer2.end(), new_buffer.begin() + 3, new_buffer.end() - 3);
+
+    unsigned char crcBuffer[new_buffer2_length];
+    for (int i = 0; i < new_buffer2_length; i++) {
+        crcBuffer[i] = new_buffer2[i + 3];
+    }
+
+    auto crc = crc16(crcBuffer, new_buffer2_length);
+    new_buffer2.push_back((crc >> 8) & 0xFF);
+    new_buffer2.push_back(crc & 0xFF);
+    new_buffer2.push_back(3);
+
+    if (new_buffer2.size() != new_buffer2_length + 6) {
+        std::cout << "huh";
+    }
+
+    boost::asio::write(serial, boost::asio::buffer(new_buffer2, new_buffer2.size()));
 }
 
 void Motor::doHoming(boost::asio::serial_port* serial) {
@@ -262,9 +335,9 @@ Controller::~Controller() {
 void Controller::heartbeatFunc(boost::asio::serial_port* serialport) {
     try {
         while (!this->shutdown) {
-            Package package;
-            package.encodeCommand(COMM_ALIVE, std::vector<int>());
-            package.send(serialport);
+            // Package package;
+            // package.encodeCommand(COMM_ALIVE, std::vector<int>());
+            // package.send(serialport);
 
             for (const int can_id : this->can_ids) {
                 Package p;
@@ -285,6 +358,10 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
     std::cout << "starting goToPos" << std::endl;
 
     for (Motor* motor : motors) {
+        if (!motor->homed) {
+            std::cout << "The motor is not homed!" << std::endl;
+            return;
+        }
         motor->getValues(serial);
     }
 
@@ -313,15 +390,18 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
         mid_pos = motors[0]->pos;
     }
 
+    std::cout << "Starting movement from " << mid_pos << std::endl;
+
     std::vector<std::pair<double, double>> mid_positions = {std::make_pair(mid_pos, 0)};
     double total_time = 0;
     if (mid_pos < pos) {
         while (mid_pos < pos) {
             const int current_step = static_cast<int>(mid_positions.size());
 
-            const double current_velocity = (current_step <= velocity_rampsteps)
-                                                ? ((velocity / velocity_rampsteps) * current_step)
-                                                : velocity;
+            const double current_velocity =
+                (current_step <= velocity_rampsteps)
+                    ? ((static_cast<double>(velocity) / velocity_rampsteps) * current_step)
+                    : velocity;
 
             const double time_increment = degrees_per_step / current_velocity;
 
@@ -331,17 +411,18 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
                 mid_positions.emplace_back(mid_pos, total_time);
             }
 
-            if (current_step == velocity_rampsteps) {
-                acc_substeps = 0;
+            if ((current_step - 1) / acc_substeps == velocity_rampsteps) {
+                acc_substeps = 1;
             }
         }
     } else {
         while (mid_pos > pos) {
             const int current_step = static_cast<int>(mid_positions.size());
 
-            const double current_velocity = (current_step <= velocity_rampsteps)
-                                                ? ((velocity / velocity_rampsteps) * current_step)
-                                                : velocity;
+            const double current_velocity =
+                (current_step <= velocity_rampsteps)
+                    ? ((static_cast<double>(velocity) / velocity_rampsteps) * current_step)
+                    : velocity;
 
             const double time_increment = degrees_per_step / current_velocity;
 
@@ -351,15 +432,15 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
                 mid_positions.emplace_back(mid_pos, total_time);
             }
 
-            if (current_step == velocity_rampsteps) {
-                acc_substeps = 0;
+            if ((current_step - 1) / acc_substeps == velocity_rampsteps) {
+                acc_substeps = 1;
             }
         }
     }
 
-    // Change the ending steps to slowly decelerate, 3 times as slow as the initial acceleration
-    // velocity_rampsteps /= 2;
-    if (velocity_rampsteps > static_cast<int>(mid_positions.size())) {
+    // Change the ending steps to slowly decelerate, 2 times as slow as the initial acceleration
+    velocity_rampsteps *= 2;
+    if (velocity_rampsteps > mid_positions.size()) {
         velocity_rampsteps = static_cast<int>(mid_positions.size());
     }
     total_time = mid_positions[mid_positions.size() - velocity_rampsteps - 1].second;
@@ -381,6 +462,8 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
     // for (auto &[pos, time] : mid_positions) {
     //     std::cout << pos << " " << time << std::endl;
     // }
+    //
+    // return;
 
     std::cout << "done calc\n";
 
@@ -389,13 +472,14 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
 
     const auto start_time = std::chrono::high_resolution_clock::now();
     for (auto [pos, timestamp] : mid_positions) {
+        double new_timestamp = 2 * timestamp;
         auto current_time = std::chrono::high_resolution_clock::now();
         if (const double elapsed = std::chrono::duration<double>(current_time - start_time).count();
-            timestamp > elapsed) {
+            new_timestamp > elapsed) {
             std::this_thread::sleep_for(std::chrono::duration<double>(
-                timestamp - std::chrono::duration<double>(
-                                (std::chrono::high_resolution_clock::now() - start_time))
-                                .count()));
+                new_timestamp - std::chrono::duration<double>(
+                                    (std::chrono::high_resolution_clock::now() - start_time))
+                                    .count()));
         } else {
             missed++;
             continue;
@@ -405,7 +489,7 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
 
         for (Motor* motor : motors) {
             motor->setPos(serial, pos);
-            if (it % static_cast<int>(10 / degrees_per_step) == 0) {
+            if (it % static_cast<int>(30 / degrees_per_step) == 0) {
                 motor->getValues(serial);
             }
         }
@@ -420,4 +504,18 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
     }
 
     std::cout << "Got the final values" << std::endl;
+}
+
+void Controller::goToPosXY(boost::asio::serial_port* serial, const double pos_x, const double pos_y,
+                           Motor* horizontal_motor, std::vector<Motor*> vertical_motors,
+                           const double degrees_per_step, const int acc_substeps,
+                           const int velocity, int velocity_rampsteps) {
+    std::cout << "Going to go to pos " << pos_x << ", " << pos_y << std::endl;
+
+    this->goToPos(serial, pos_x, {horizontal_motor}, degrees_per_step, acc_substeps, velocity,
+                  velocity_rampsteps);
+    this->goToPos(serial, pos_y, std::move(vertical_motors), degrees_per_step, acc_substeps,
+                  velocity, velocity_rampsteps);
+
+    std::cout << "Finished" << std::endl;
 }

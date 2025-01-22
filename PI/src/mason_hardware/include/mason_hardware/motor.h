@@ -50,7 +50,6 @@ class Motor {
     // Constructor
     Motor(std::string joint_name, int id, boost::asio::serial_port* serial, bool is_can = false);
     Motor() = default;
-
     // Destructor
     // ~Motor();
 
@@ -61,6 +60,10 @@ class Motor {
     void setDuty(boost::asio::serial_port* serial, double duty) const;
 
     void setPos(boost::asio::serial_port* serial, double pos);
+
+    void setDerivativeGain(boost::asio::serial_port& serial, float gain);
+
+    uint32_t buffer_append_float32_auto(float number);
 
     void doHoming(boost::asio::serial_port* serial);
 
@@ -81,6 +84,11 @@ class Controller {
     void goToPos(boost::asio::serial_port* serial, double pos, std::vector<Motor*> motors,
                  double degrees_per_step = 0.1, int acc_substeps = 10, int velocity = 40,
                  int velocity_rampsteps = -1);
+
+    void goToPosXY(boost::asio::serial_port* serial, double pos_x, double pos_y,
+                   Motor* horizontal_motor, std::vector<Motor*> vertical_motors,
+                   double degrees_per_step = 0.1, int acc_substeps = 10, int velocity = 40,
+                   int velocity_rampsteps = -1);
 };
 
-#endif  // MOTOR_H
+#endif  // MOTOR_HPP
