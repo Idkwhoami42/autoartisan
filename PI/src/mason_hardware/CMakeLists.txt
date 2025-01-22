@@ -15,6 +15,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(rclcpp_components REQUIRED)
 
+
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   hardware_interface
   pluginlib
@@ -47,7 +48,7 @@ endif()
 
 # Add the library
 add_library(mason_hardware SHARED src/mason_interface.cpp src/motor.cpp src/contact_sensors.cpp)
-target_link_libraries(${PROJECT_NAME} ${GPIOD_LIBRARY})
+target_link_libraries(${PROJECT_NAME} ${GPIOD_LIBRARY} gpiodcxx)
 
 # Link any dependencies
 ament_target_dependencies(mason_hardware

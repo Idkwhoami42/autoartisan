@@ -8,11 +8,10 @@
         <hardware>
           <plugin>mason_hardware/MasonInterface</plugin>
           <param name="device">/dev/ttyACM0</param>
-          <param name="left_motor_name">MotorJointLeft</param>
-          <param name="right_motor_name">MotorJointRight</param>
-          <param name="horizontal_motor_name">MotorTop</param>
+          <param name="left_motor_name">motor_left</param>
+          <param name="right_motor_name">motor_right</param>
+          <param name="horizontal_motor_name">motor_horizontal</param>
           <param name="baud_rate">115200</param>
-          <!-- <param name="timeout_ms">50</param> -->
           <param name="id_left">125</param>
           <param name="id_right">72</param>
           <param name="id_horizontal">1</param>
@@ -24,39 +23,15 @@
           <param name="calculate_dynamics">true</param>
         </hardware>
       </xacro:if>
-      <joint name="${prefix}MotorTop">
+      <joint name="${prefix}motor_horizontal">
         <command_interface name="position">
-          <param name="min">-1</param>
-          <param name="max">1</param>
         </command_interface>
-        <!-- <command_interface name="velocity">
-          <param name="min">-1</param>
-          <param name="max">1</param>
-        </command_interface>
-        <command_interface name="acceleration">
-          <param name="min">-1</param>
-          <param name="max">1</param>
-        </command_interface> -->
         <state_interface name="position"/>
-        <!-- <state_interface name="velocity"/> -->
-        <!-- <state_interface name="acceleration"/> -->
       </joint>
-      <joint name="${prefix}MotorJointLeft">
+      <joint name="${prefix}motor_left">
         <command_interface name="position">
-          <param name="min">-1</param>
-          <param name="max">1</param>
         </command_interface>
-        <!-- <command_interface name="velocity">
-          <param name="min">-1</param>
-          <param name="max">1</param>
-        </command_interface>
-        <command_interface name="acceleration">
-          <param name="min">-1</param>
-          <param name="max">1</param>
-        </command_interface> -->
-        <state_interface name="position"/>
-        <!-- <state_interface name="velocity"/> -->
-        <!-- <state_interface name="acceleration"/> -->
+        <state_interface name="position"/>>
       </joint>
     </ros2_control>
   </xacro:macro>

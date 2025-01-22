@@ -17,7 +17,6 @@
 const char *chip = "gpiochip4";
 std::mutex activeSensorMutex;
 std::string activeSensor = "";
-std::thread pollingThread;
 std::chrono::nanoseconds t = std::chrono::nanoseconds{10000};
 
 namespace mason_hardware {
@@ -36,7 +35,7 @@ void HomingPublisher::publishLimits(const double x_limit, const double y_limit,
     this->rotation_lim_publisher_->publish(message);
 }
 
-MasonInterface::MasonInterface() : serial(nullptr), controller_(nullptr) {};
+MasonInterface::MasonInterface() : serial(nullptr), controller_(nullptr), contactSensors(nullptr){};
 
 MasonInterface::~MasonInterface() {
     if (this->serial->is_open()) {
@@ -44,6 +43,7 @@ MasonInterface::~MasonInterface() {
     }
 
     if (this->write_thread_.joinable()) this->write_thread_.join();
+    if (this->polling_thread_.joinable()) this->polling_thread_.join();
 }
 
 void pollPins(ContactSensors *contactSensors) {
@@ -145,56 +145,50 @@ bool MasonInterface::homingCallback() {
     return true;
 }
 
-void MasonInterface::returnToStart() {
+bool MasonInterface::returnToStart() {
     // START_COMMENT
     try {
-        // TODO change this
-        if (true) {
-            // double init_pos = -360.0;
-            while (true) {
-                std::string sensor = "";
-                {
-                    std::unique_lock<std::mutex> lock(activeSensorMutex);
-                    sensor = activeSensor;
-                }
-                if (sensor != "LEFT") {
-                    this->motorH_.setDuty(this->serial.get(), -0.3);
-                }
-                if (sensor == "LEFT") break;
+        while (true) {
+            std::string sensor = "";
+            {
+                std::unique_lock<std::mutex> lock(activeSensorMutex);
+                sensor = activeSensor;
             }
-
-            this->motorH_.setDuty(this->serial.get(), 0.0);
-
-            // init_pos = -360.0;
-            while (true) {
-                std::string sensor = "";
-                {
-                    std::unique_lock<std::mutex> lock(activeSensorMutex);
-                    sensor = activeSensor;
-                }
-                if (sensor != "BOTTOM") {
-                    this->motorL_.setDuty(this->serial.get(), -0.3);
-                    this->motorR_.setDuty(this->serial.get(), -0.3);
-                    // this->controller_->goToPos(this->serial.get(), 360, {this->motorL_,
-                    // this->motorR_}); init_pos = init_pos - 360;
-                }
-                if (sensor == "BOTTOM") break;
+            if (sensor != "LEFT") {
+                this->motorH_.setDuty(this->serial.get(), -0.03);
             }
-
-            this->motorR_.setDuty(this->serial.get(), 0);
-            this->motorL_.setDuty(this->serial.get(), 0);
-        } else {
-            this->controller_->goToPos(this->serial.get(), 0.0,
-                                       {&this->motorH_, &this->motorL_, &this->motorR_});
+            if (sensor == "LEFT") break;
         }
+
+        this->motorH_.setDuty(this->serial.get(), 0.0);
+
+        // init_pos = -360.0;
+        // while (true) {
+        //     std::string sensor = "";
+        //     {
+        //         std::unique_lock<std::mutex> lock(activeSensorMutex);
+        //         sensor = activeSensor;
+        //     }
+        //     if (sensor != "BOTTOM") {
+        //         this->motorL_.setDuty(this->serial.get(), -0.3);
+        //         this->motorR_.setDuty(this->serial.get(), -0.3);
+        //         // this->controller_->goToPos(this->serial.get(), 360, {this->motorL_,
+        //         // this->motorR_}); init_pos = init_pos - 360;
+        //     }
+        //     if (sensor == "BOTTOM") break;
+        // }
+
+        this->motorR_.setDuty(this->serial.get(), 0);
+        this->motorL_.setDuty(this->serial.get(), 0);
+
         this->prev_horizontal_position_ = 0.0;
         this->prev_vertical_position_ = 0.0;
     } catch (std::exception &e) {
-        this->at_starting_point_ = false;
+        return false;
         printf("Error whilst returning to start: %s.\n", e.what());
     }
-    // END_COMMENT
-    this->at_starting_point_ = true;
+
+    return true;
 }
 
 void MasonInterface::initializePublisher() {
@@ -229,12 +223,11 @@ hardware_interface::CallbackReturn MasonInterface::on_init(
                 left_motor_name.c_str(), right_motor_name.c_str(), horizontal_motor_name.c_str(),
                 left_motor_id, right_motor_id, horizontal_motor_id, device.c_str());
 
-    // TODO: UPDATE PIN NUMBERS 
+    // TODO: UPDATE PIN NUMBERS
     std::vector<std::pair<unsigned int, std::string>> contactSensorPins = {
         {27, "RIGHT"}, {22, "TOP"}, {23, "BOTTOM"}, {24, "LEFT"}};
-    // ContactSensors comms(chip, contactSensorPins);
 
-    // this->contactSensors = &comms;
+    this->contactSensors.reset(new ContactSensors(chip, contactSensorPins));
 
     // angular_velocity_max = Power_max / Torque_max
     double angular_velocity = static_cast<double>(2450) / static_cast<double>(7);
@@ -273,8 +266,9 @@ hardware_interface::CallbackReturn MasonInterface::on_init(
 
     this->homing_pub_ = std::make_shared<HomingPublisher>();
 
+    this->polling_thread_ = std::thread(pollPins, this->contactSensors.get());
+
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Hardware interface activated.");
-    // pollingThread = std::thread(pollPins, this->contactSensors);
 
     return hardware_interface::CallbackReturn::SUCCESS;
 }
@@ -287,18 +281,22 @@ hardware_interface::CallbackReturn MasonInterface::on_activate(
         return hardware_interface::CallbackReturn::ERROR;
     }
 
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Executing homing sequence...please wait...");
-    // while (!this->at_starting_point_) {
-    //     this->returnToStart();
-    //     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Mason is at start point: %d",
-    //                 this->at_starting_point_);
+    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Returning to start...please wait...");
+
+    // if (!this->returnToStart()) {
+    //     RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"), "Return to start failed");
+    //     return hardware_interface::CallbackReturn::ERROR;
     // }
+
+    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Executing homing sequence...please wait...");
 
     bool homing_done = this->homingCallback();
     if (!homing_done) {
         RCLCPP_ERROR(rclcpp::get_logger("MasonInterface"), "Homing failed");
         return hardware_interface::CallbackReturn::ERROR;
     }
+
+    this->write_thread_ = std::thread(&MasonInterface::writeWorker, this);
 
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Successfully activated!");
 
@@ -348,27 +346,34 @@ hardware_interface::return_type MasonInterface::read(const rclcpp::Time & /*time
     return hardware_interface::return_type::OK;
 }
 
-void MasonInterface::updatePos(Command horizontal_command, Command vertical_command) {
-    auto &[horizontal_pos, horizontal_name_pos, skipHorizontal] = horizontal_command;
-    auto &[vertical_pos, left_name_pos, skipVertical] = vertical_command;
+void MasonInterface::writeWorker() {
+    while (true) {
+        if (this->write_queue_.empty()) continue;
 
-    // TODO: remove this
-    // horizontal_pos = std::clamp(0.0, horizontal_pos, this->max_x_);
-    // vertical_pos = std::clamp(0.0, vertical_pos, this->max_y_);
+        auto front = this->write_queue_.front();
+        this->write_queue_.pop();
 
-    if (!skipHorizontal) {
-        this->controller_->goToPos(this->serial.get(), horizontal_pos, {&this->motorH_});
-        RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command written for x position: %f",
-                    horizontal_pos);
-        set_state(horizontal_name_pos, horizontal_pos);
-    }
+        auto &[horizontal_pos, horizontal_name_pos, skipHorizontal] = front.first;
+        auto &[vertical_pos, vertical_name_pos, skipVertical] = front.second;
 
-    if (!skipVertical) {
-        // this->controller_->goToPos(this->serial.get(), vertical_pos, {&this->motorL_,
-        // &this->motorR_}); RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command written for
-        // y position: %f",
-        //             vertical_pos);
-        // set_state(vertical_name_pos, vertical_pos);
+        // TODO: remove this
+        // horizontal_pos = std::clamp(0.0, horizontal_pos, this->max_x_);
+        // vertical_pos = std::clamp(0.0, vertical_pos, this->max_y_);
+
+        if (!skipHorizontal) {
+            this->controller_->goToPos(this->serial.get(), horizontal_pos, {&this->motorH_});
+            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command written for x position: %f",
+                        horizontal_pos);
+            set_state(horizontal_name_pos, horizontal_pos);
+        }
+
+        if (!skipVertical) {
+            this->controller_->goToPos(this->serial.get(), vertical_pos,
+                                       {&this->motorL_, &this->motorR_});
+            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command written for y position: %f",
+                        vertical_pos);
+            set_state(vertical_name_pos, vertical_pos);
+        }
     }
 }
 
@@ -397,9 +402,20 @@ hardware_interface::return_type MasonInterface::write(const rclcpp::Time & /*tim
     if (!skipHorizontal) this->prev_horizontal_position_ = horizontal_cmd;
     if (!skipVertical) this->prev_vertical_position_ = left_cmd;
 
-    this->write_thread_ = std::thread(&MasonInterface::updatePos, this,
-                                      Command{horizontal_cmd, horizontal_name_pos, skipHorizontal},
-                                      Command{left_cmd, left_name_pos, skipVertical});
+    if (skipHorizontal && skipVertical) {
+        return hardware_interface::return_type::OK;
+    }
+
+    this->write_queue_.push({Command{horizontal_cmd, horizontal_name_pos, skipHorizontal},
+                             Command{left_cmd, left_name_pos, skipVertical}});
+
+    // if (write_thread_busy) {
+    //     this->write_thread_.join();
+    // }
+    // this->write_thread_ = std::thread(&MasonInterface::updatePos, this,
+    //                                     Command{horizontal_cmd, horizontal_name_pos,
+    //                                     skipHorizontal}, Command{left_cmd, left_name_pos,
+    //                                     skipVertical});
 
     return hardware_interface::return_type::OK;
 }

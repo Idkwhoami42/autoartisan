@@ -37,7 +37,7 @@ const unsigned short crc16_tab[] = { 0x0000, 0x1021, 0x2042, 0x3063, 0x4084,
 		0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0 };
 
 
-unsigned short crc16(unsigned char *buf, unsigned int len) {
+inline unsigned short crc16(unsigned char *buf, unsigned int len) {
     unsigned short cksum = 0;
     for (unsigned int i = 0; i < len; i++) {
         cksum = crc16_tab[(((cksum >> 8) ^ *buf++) & 0xFF)] ^ (cksum << 8);

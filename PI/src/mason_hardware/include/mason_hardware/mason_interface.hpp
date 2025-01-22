@@ -7,6 +7,7 @@
 #include <rclcpp_components/register_node_macro.hpp>
 #include <string>
 #include <vector>
+#include <queue>
 
 #include "contact_sensors.hpp"
 #include "hardware_interface/handle.hpp"
@@ -70,10 +71,10 @@ class MasonInterface : public hardware_interface::SystemInterface {
                                                   const rclcpp::Duration &period) override;
 
     bool homingCallback();
-    void returnToStart();
+    bool returnToStart();
     void initializePublisher();
     bool check_joints();
-    void updatePos(Command horizontal_command, Command vertical_command);
+    void writeWorker();
 
    private:
     Config cfg_;
@@ -83,7 +84,7 @@ class MasonInterface : public hardware_interface::SystemInterface {
     Motor motorR_;
     Motor motorH_;
     std::unique_ptr<Controller> controller_;
-    ContactSensors *contactSensors = nullptr;
+    std::unique_ptr<ContactSensors> contactSensors;
 
     double prev_horizontal_position_ = 0;
     double prev_vertical_position_ = 0;
@@ -93,6 +94,11 @@ class MasonInterface : public hardware_interface::SystemInterface {
     bool at_starting_point_ = false;
 
     std::thread write_thread_;
+    std::thread polling_thread_;
+
+    std::queue<std::pair<Command, Command>> write_queue_;
+
+    
 
     std::shared_ptr<HomingPublisher> homing_pub_;
     rclcpp::Executor::SharedPtr executor_;
