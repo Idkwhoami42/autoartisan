@@ -4,10 +4,12 @@
 #include <boost/asio.hpp>
 #include <geometry_msgs/msg/point.hpp>
 #include <memory>
+#include <queue>
 #include <rclcpp_components/register_node_macro.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <string>
 #include <vector>
-#include <queue>
 
 #include "contact_sensors.hpp"
 #include "hardware_interface/handle.hpp"
@@ -27,7 +29,6 @@
 #include "rclcpp/time.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
-#include <std_msgs/msg/float64_multi_array.hpp>
 
 namespace mason_hardware {
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
@@ -40,6 +41,15 @@ class HomingPublisher : public rclcpp::Node {
 
    private:
     rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr rotation_lim_publisher_;
+};
+
+class FSMPublisher : public rclcpp::Node {
+   public:
+    FSMPublisher();
+    void publishState(const std::string state);
+
+   private:
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_publisher_;
 };
 
 struct Command {
@@ -99,9 +109,8 @@ class MasonInterface : public hardware_interface::SystemInterface {
 
     std::queue<std::pair<Command, Command>> write_queue_;
 
-    
-
     std::shared_ptr<HomingPublisher> homing_pub_;
+    std::shared_ptr<FSMPublisher> fsm_pub_;
     rclcpp::Executor::SharedPtr executor_;
 };
 };  // namespace mason_hardware
