@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-#include "crc.h"
+#include "mason_hardware/crc.h"
 
 std::mutex mtx;
 
@@ -74,6 +74,8 @@ int32_t Motor::unpackI(const std::vector<uint8_t>& buffer, const int startIndex,
 }
 
 bool Motor::getValues(boost::asio::serial_port* serial) {
+    // auto start = std::chrono::high_resolution_clock::now();
+
     Package p2;
     if (this->is_can) {
         const std::vector<int> data = {this->id, COMM_GET_VALUES_SELECTIVE, 1 << 16};
@@ -111,6 +113,13 @@ bool Motor::getValues(boost::asio::serial_port* serial) {
         this->pos = this->clamped_pos + (this->rotations * 360);
     }
 
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // Calculate the duration
+    // std::chrono::duration<double, std::milli> duration = end - start;
+
+    // Output the duration
+    // std::cout << "Execution time: " << duration.count() << " ms" << std::endl;
     return true;
 }
 
@@ -352,7 +361,7 @@ void Controller::heartbeatFunc(boost::asio::serial_port* serialport) {
     }
 }
 
-void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
+bool Controller::goToPos(boost::asio::serial_port* serial, const double pos,
                          std::vector<Motor*> motors, const double degrees_per_step,
                          int acc_substeps, const int velocity, int velocity_rampsteps) {
     std::cout << "starting goToPos" << std::endl;
@@ -360,7 +369,7 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
     for (Motor* motor : motors) {
         if (!motor->homed) {
             std::cout << "The motor is not homed!" << std::endl;
-            return;
+            return false;
         }
         motor->getValues(serial);
     }
@@ -382,6 +391,9 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
         for (const Motor* motor : motors) {
             if (std::abs(motor->pos - average_position) > 2) {
                 std::cout << "Motors are not aligned!" << std::endl;
+                std::cout << "avg: " << average_position << ", motor " << motor->joint_name
+                          << " pos = " << motor->pos << std::endl;
+                return false;
             }
         }
 
@@ -504,6 +516,8 @@ void Controller::goToPos(boost::asio::serial_port* serial, const double pos,
     }
 
     std::cout << "Got the final values" << std::endl;
+
+    return true;
 }
 
 void Controller::goToPosXY(boost::asio::serial_port* serial, const double pos_x, const double pos_y,

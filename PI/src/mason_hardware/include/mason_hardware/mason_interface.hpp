@@ -70,6 +70,7 @@ class MasonInterface : public hardware_interface::SystemInterface {
     virtual hardware_interface::return_type write(const rclcpp::Time &time,
                                                   const rclcpp::Duration &period) override;
 
+    bool home();
     bool homingCallback();
     bool returnToStart();
     void initializePublisher();

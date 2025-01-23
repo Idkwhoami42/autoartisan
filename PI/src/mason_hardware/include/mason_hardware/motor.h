@@ -81,7 +81,7 @@ class Controller {
 
     void heartbeatFunc(boost::asio::serial_port* serialport);
 
-    void goToPos(boost::asio::serial_port* serial, double pos, std::vector<Motor*> motors,
+    bool goToPos(boost::asio::serial_port* serial, double pos, std::vector<Motor*> motors,
                  double degrees_per_step = 0.1, int acc_substeps = 10, int velocity = 40,
                  int velocity_rampsteps = -1);
 
