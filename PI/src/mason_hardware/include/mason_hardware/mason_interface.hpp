@@ -7,7 +7,7 @@
 #include <queue>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
-#include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <string>
 #include <vector>
 
@@ -43,13 +43,19 @@ class HomingPublisher : public rclcpp::Node {
     rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr rotation_lim_publisher_;
 };
 
+enum Teensy {
+    TEENSY1 = 1,
+    TEENSY2 = 2,
+};
+
 class FSMPublisher : public rclcpp::Node {
    public:
     FSMPublisher();
-    void publishState(const std::string state);
+    void publishState(const int state, Teensy id);
 
    private:
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr state_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr state_publisher2_;
 };
 
 struct Command {

@@ -37,17 +37,23 @@ void HomingPublisher::publishLimits(const double x_limit, const double y_limit,
 
 FSMPublisher::FSMPublisher() : Node("mason_fsm_publisher") {
     this->state_publisher_ =
-        this->create_publisher<std_msgs::msg::String>("/mason_fsm_publisher/state", 10);
+        this->create_publisher<std_msgs::msg::Int32>("/mason_fsm_publisher/state", 10);
+    this->state_publisher2_ =
+        this->create_publisher<std_msgs::msg::Int32>("/mason_fsm_publisher/state2", 10);
 }
 
-void FSMPublisher::publishState(const std::string state) {
-    auto message = std_msgs::msg::String();
+void FSMPublisher::publishState(const int state, Teensy id) {
+    auto message = std_msgs::msg::Int32();
     message.data = state;
-    this->state_publisher_->publish(message);
+
+    if (id == TEENSY1)
+        this->state_publisher_->publish(message);
+    else if (id == TEENSY2) {
+        this->state_publisher2_->publish(message);
+    }
 }
 
-MasonInterface::MasonInterface()
-    : serial(nullptr), controller_(nullptr), contactSensors(nullptr) {};
+MasonInterface::MasonInterface() : serial(nullptr), controller_(nullptr), contactSensors(nullptr){};
 
 MasonInterface::~MasonInterface() {
     if (this->serial->is_open()) {
@@ -175,31 +181,110 @@ bool MasonInterface::homingCallback() {
 bool MasonInterface::returnToStart() {
     // START_COMMENT
     try {
-        // RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Going up 170 degrees");
+
+        // this->motorH_.setDuty(this->serial.get(), -0.03);
+        // while(true) {
+        //     this->motorH_.getValues(this->serial.get());
+        //     std::unique_lock<std::mutex> lock(activeSensorMutex);
+        //     if (activeSensor == "LEFT") break;
+        // }
+        // this->motorH_.setDuty(this->serial.get(), 0.0);
+        // this->motorH_.getValues(this->serial.get());
+
+        
+        // std::this_thread::sleep_for(std::chrono::seconds(100000));
+
+        for (int i = 0; i < 3; i++) {
+            this->controller_.get()->goToPos(this->serial.get(), 200 * (i%2 == 0 ? -0.8 : 1),
+                                             {&this->motorL_, &this->motorR_});
+            
+            this->motorH_.setDuty(this->serial.get(), 0.03);
+            while (true) {
+                this->motorH_.getValues(this->serial.get());
+                std::unique_lock<std::mutex> lock(activeSensorMutex);
+                if (activeSensor == "RIGHT") break;
+            }
+
+            this->motorH_.setDuty(this->serial.get(), 0);
+            this->motorH_.getValues(this->serial.get());
+
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+
+            this->motorH_.setDuty(this->serial.get(), -0.03);
+            while (true) {
+                this->motorH_.getValues(this->serial.get());
+                std::unique_lock<std::mutex> lock(activeSensorMutex);
+                if (activeSensor == "LEFT") break;
+            }
+            
+            this->motorH_.setDuty(this->serial.get(), 0.0);
+            this->motorH_.getValues(this->serial.get());
+
+            this->controller_.get()->goToPos(this->serial.get(), 0, {&this->motorH_});
+
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            
+        }
+
         // this->controller_.get()->goToPos(this->serial.get(), 200, {&this->motorL_, &this->motorR_});
+        // this->controller_.get()->goToPos(this->serial.get(), 30, {&this->motorL_, &this->motorR_});
+
+
+        std::this_thread::sleep_for(std::chrono::seconds(10000));
+
+        // RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Going up 170 degrees");
+        // this->controller_.get()->goToPos(this->serial.get(), -100,
+        //                                  {&this->motorL_, &this->motorR_});
 
         // RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Encoders: %f, %f",
         //             this->motorL_.actual_pos, this->motorR_.actual_pos);
 
         // RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Going right till the end");
 
+        // // this->fsm_pub_->publishState(0, TEENSY1);
+
         // this->motorH_.setDuty(this->serial.get(), 0.03);
 
         // while (true) {
+        //     this->motorH_.getValues(this->serial.get());
         //     std::unique_lock<std::mutex> lock(activeSensorMutex);
         //     if (activeSensor == "RIGHT") break;
         // }
 
         // this->motorH_.setDuty(this->serial.get(), 0);
 
-        this->fsm_pub_->publishState("START_BRUSH");
+        // this->motorH_.getValues(this->serial.get());
 
-        std::this_thread::sleep_for(std::chrono::seconds(10));
+        // // this->fsm_pub_->publishState(1, TEENSY1);
 
-        this->fsm_pub_->publishState("STOP_BRUSH");
+        // // this->motorH_.setDuty(this->serial.get(), -0.03);
+        // // while (true) {
+        // //     this->motorH_.getValues(this->serial.get());
+        // //     std::unique_lock<std::mutex> lock(activeSensorMutex);
+        // //     if (activeSensor == "LEFT") break;
+        // // }
 
-        // this->controller_.get()->goToPos(this->serial.get(), 60, {&this->motorL_,
-        // &this->motorR_});
+        // this->motorH_.setDuty(this->serial.get(), 0.0);
+
+        // this->motorH_.getValues(this->serial.get());
+
+        // this->controller_.get()->goToPos(this->serial.get(), 100, {&this->motorL_, &this->motorR_});
+
+        // this->motorH_.setDuty(this->serial.get(), 0.03);
+
+        // while (true) {
+        //     this->motorH_.getValues(this->serial.get());
+        //     std::unique_lock<std::mutex> lock(activeSensorMutex);
+        //     if (activeSensor == "RIGHT") break;
+        // }
+
+        // this->motorH_.setDuty(this->serial.get(), 0);
+
+        // this->motorH_.getValues(this->serial.get());
+
+        // // this->controller_.get()->goToPos(this->serial.get(), 0, {&this->motorH_});
+
+        // std::this_thread::sleep_for(std::chrono::seconds(10000));
 
         // this->motorH_.setDuty(this->serial.get(), -0.03);
         // while (true) {
@@ -391,12 +476,12 @@ hardware_interface::CallbackReturn MasonInterface::on_activate(
 
     RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Homing again!");
 
-    int tries = 0;
-    while (!this->home()) {
-        tries++;
-    }
+    // int tries = 0;
+    // while (!this->home()) {
+    //     tries++;
+    // }
 
-    RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Homing done in %d tries", tries);
+    // RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Homing done in %d tries", tries);
 
     // RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Executing homing sequence...please
     // wait...");
