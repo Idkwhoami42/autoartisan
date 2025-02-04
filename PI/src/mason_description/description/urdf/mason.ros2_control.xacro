@@ -7,14 +7,15 @@
       <xacro:unless value="${use_mock_hardware}">
         <hardware>
           <plugin>mason_hardware/MasonInterface</plugin>
-          <param name="device">/dev/ttyACM0</param>
+          <!-- <param name="device">/dev/ttyACM0</param>
           <param name="left_motor_name">motor_left</param>
           <param name="right_motor_name">motor_right</param>
           <param name="horizontal_motor_name">motor_horizontal</param>
           <param name="baud_rate">115200</param>
           <param name="id_left">125</param>
           <param name="id_right">72</param>
-          <param name="id_horizontal">1</param>
+          <param name="id_horizontal">1</param> -->
+          <param name="can">can0</param>
         </hardware>
       </xacro:unless>
       <xacro:if value="${use_mock_hardware}">
@@ -24,14 +25,20 @@
         </hardware>
       </xacro:if>
       <joint name="${prefix}motor_horizontal">
+        <param name="node_id">0</param>
         <command_interface name="position">
         </command_interface>
         <state_interface name="position"/>
       </joint>
       <joint name="${prefix}motor_left">
+        <param name="node_id">1</param>
         <command_interface name="position">
         </command_interface>
-        <state_interface name="position"/>>
+        <state_interface name="position"/>
+      </joint>
+      <joint name="${prefix}motor_right">
+        <param name="node_id">2</param>
+        <state_interface name="position"/>
       </joint>
     </ros2_control>
   </xacro:macro>

@@ -39,6 +39,20 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
 # ${interface_files}
 # )
 
+# ament_auto_find_build_dependencies()
+
+# ament_export_dependencies(rosidl_default_runtime)
+
+# include_directories(include)
+# include_directories(../odrive_base/include)
+
+# ament_auto_add_library(
+#   odrive_ros2_control_plugin SHARED
+#   ../odrive_base/src/epoll_event_loop.cpp
+#   ../odrive_base/src/socket_can.cpp
+#   src/odrive_hardware_interface.cpp
+# )
+
 include_directories(include)
 
 find_library(GPIOD_LIBRARY gpiod)
