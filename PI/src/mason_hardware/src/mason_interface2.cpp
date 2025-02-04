@@ -1,4 +1,4 @@
-#include "mason_hardware/mason_interface.hpp"
+#include "mason_hardware/mason_interface2.hpp"
 
 #include <stdint.h>
 
@@ -79,14 +79,15 @@ void pollPins(ContactSensors *contactSensors) {
     }
 }
 
+// TODO: Set up homed reference frame: https://docs.odriverobotics.com/v/latest/manual/control.html#homed-reference-frame
 bool MasonInterface::homingCallback() {
     // NOT SURE HOW TO IMPLEMENT ACTUAL HOMING WITH ODRIVES
     for (auto& axis : axes_) {
-        Set_Controller_Config_msg_t config_msg;
-        config_msg.absolute_setpoints = true;
-        axis.send(config_msg);
+        // <axis>.controller.config.absolute_setpoints = true;
+        Set_Axis_State_msg_t homing_msg;
+        homing_msg.Axis_Requested_State = AXIS_STATE_HOMING;
 
-        axis.send(Set_Axis_State_msg_t{AXIS_STATE_HOMING});
+        axis.send(homing_msg);
     }
 
     bool homed_horizontally = false;
@@ -117,7 +118,7 @@ bool MasonInterface::homingCallback() {
         return false;
     }
 
-    this->max_y_ = std::minf(axes_[1].pos_estimate_, axes_[2].pos_estimate_);
+    this->max_y_ = std::min(axes_[1].pos_estimate_, axes_[2].pos_estimate_);
 
     while (!homed_horizontally) {
         std::string sensor = "";
@@ -174,7 +175,7 @@ bool MasonInterface::returnToStart() {
         return false;
     }
 
-    this->min_y_ = std::maxf(axes_[1].pos_estimate_, axes_[2].pos_estimate_);
+    this->min_y_ = std::max(axes_[1].pos_estimate_, axes_[2].pos_estimate_);
 
     while (true) {
         std::string sensor = "";
@@ -194,7 +195,7 @@ bool MasonInterface::returnToStart() {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     this->min_x_ = axes_[0].pos_estimate_;
-    this->at_start_position_ = true;
+    this->at_starting_point_ = true;
     return true;
 }
 
@@ -276,7 +277,7 @@ hardware_interface::CallbackReturn MasonInterface::on_init(
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn MasonInterface::on_configure(const State&) {
+hardware_interface::CallbackReturn MasonInterface::on_configure(const rclcpp_lifecycle::State&) {
     if (!can_intf_.init(can_intf_name_, &event_loop_, std::bind(&MasonInterface::on_can_msg, this, _1))) {
         RCLCPP_ERROR(
             rclcpp::get_logger("MasonInterface"),
@@ -289,7 +290,7 @@ hardware_interface::CallbackReturn MasonInterface::on_configure(const State&) {
     return CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn MasonInterface::on_cleanup(const State&) {
+hardware_interface::CallbackReturn MasonInterface::on_cleanup(const rclcpp_lifecycle::State&) {
     can_intf_.deinit();
     return CallbackReturn::SUCCESS;
 }
@@ -419,7 +420,7 @@ hardware_interface::return_type MasonInterface::perform_command_mode_switch(
         }
     }
 
-    return return_type::OK;
+    return hardware_interface::return_type::OK;
 }
 
 hardware_interface::return_type MasonInterface::read(const rclcpp::Time & time,
@@ -446,9 +447,8 @@ void MasonInterface::writeWorker() {
 
         if (!skip) {
             axes_[index].send(msg);
-            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command written for %s:
-            %f",
-                        name_pos,
+            RCLCPP_INFO(rclcpp::get_logger("MasonInterface"), "Command written for %s: %f",
+                        name_pos.c_str(),
                         pos);
         }
     }
@@ -475,7 +475,7 @@ hardware_interface::return_type MasonInterface::write(const rclcpp::Time & /*tim
             msg.Torque_FF = axis.torque_input_enabled_ ? axis.torque_setpoint_ : 0.0f;
             bool skip = std::isnan(axis.pos_setpoint_) ||
                           std::abs(axes_[i].pos_estimate_ - axis.pos_setpoint_) <= 1;
-            this->write_queue_.push(Command{msg, axis.pos_setpoint_, name_pos, skip, i});
+            this->write_queue_.push(Command{msg, axis.pos_setpoint_, name_pos, skip, static_cast<int>(i)});
         } else {
             // no control enabled - don't send any setpoint
         }

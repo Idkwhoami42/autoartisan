@@ -1,7 +1,6 @@
 #ifndef MASON_HARDWARE__MASON_INTERFACE_HPP_
 #define MASON_HARDWARE__MASON_INTERFACE_HPP_
 
-// #include <boost/asio.hpp>
 #include "can_helpers.hpp"
 #include "can_simple_messages.hpp"
 #include "odrive_enums.h"
@@ -20,7 +19,6 @@
 #include "hardware_interface/hardware_info.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
-// #include "motor.h"
 #include "rclcpp/clock.hpp"
 #include "rclcpp/duration.hpp"
 #include "rclcpp/executor.hpp"
@@ -42,11 +40,11 @@ using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface
 
 // Declared separate class for homing publisher bc it only needs to spin once at the beginning
 class HomingPublisher : public rclcpp::Node {
-   public:
+public:
     HomingPublisher();
     void publishLimits(const double x_limit, const double y_limit, const bool success);
 
-   private:
+private:
     rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr rotation_lim_publisher_;
 };
 
@@ -56,11 +54,11 @@ enum Teensy {
 };
 
 class FSMPublisher : public rclcpp::Node {
-   public:
+public:
     FSMPublisher();
     void publishState(const int state, Teensy id);
 
-   private:
+private:
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr state_publisher_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr state_publisher2_;
 };
@@ -73,13 +71,9 @@ struct Command {
     int index;
 };
 
-class MasonInterface : public hardware_interface::SystemInterface {
-    // struct Config {
-    //     double duty_conversion_factor_ = 0.0907;
-    //     double max_velocity_ = 11.025;
-    // };
+class MasonInterface /*final*/ : public hardware_interface::SystemInterface {
 
-   public:
+public:
     MasonInterface();
     virtual ~MasonInterface();
 
@@ -90,8 +84,12 @@ class MasonInterface : public hardware_interface::SystemInterface {
 
     virtual hardware_interface::CallbackReturn on_init(
         const hardware_interface::HardwareInfo &info) override;
-    virtual hardware_interface::CallbackReturn on_configure(const State& previous_state) override;
-    virtual hardware_interface::CallbackReturn on_cleanup(const State& previous_state) override;
+    virtual hardware_interface::CallbackReturn on_configure(const rclcpp_lifecycle::State &previous_state) override;
+    virtual hardware_interface::CallbackReturn on_cleanup(const rclcpp_lifecycle::State &previous_state) override;
+
+    virtual std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
+    virtual std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
+
     virtual hardware_interface::return_type perform_command_mode_switch(
         const std::vector<std::string>& start_interfaces,
         const std::vector<std::string>& stop_interfaces
@@ -101,7 +99,6 @@ class MasonInterface : public hardware_interface::SystemInterface {
     virtual hardware_interface::return_type write(const rclcpp::Time &time,
                                                   const rclcpp::Duration &period) override;
 
-    // bool home();
     bool homingCallback();
     bool returnToStart();
     void initializePublisher();
@@ -109,13 +106,6 @@ class MasonInterface : public hardware_interface::SystemInterface {
     void writeWorker();
 
 private:
-    // Config cfg_;
-    // boost::asio::io_context io;
-    // std::unique_ptr<boost::asio::serial_port> serial;
-    // Motor motorL_;
-    // Motor motorR_;
-    // Motor motorH_;
-    // std::unique_ptr<Controller> controller_;
     void on_can_msg(const can_frame& frame);
     void set_axis_command_mode(const Axis& axis);
 
@@ -153,6 +143,10 @@ struct Axis {
 
     void on_can_msg();
 
+    // Methods I added
+    void get_position();
+    void set_velocity(double velocity);
+
     SocketCanIntf* can_intf_;
     uint32_t node_id_;
 
@@ -180,9 +174,6 @@ struct Axis {
         can_intf_->send_can_frame(frame);
     }
 
-    // Methods I added
-    void get_position();
-    void set_velocity(double velocity);
 };
 
 };  // namespace mason_hardware

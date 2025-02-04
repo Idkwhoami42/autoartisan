@@ -41,19 +41,20 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
 
 # ament_auto_find_build_dependencies()
 
-# ament_export_dependencies(rosidl_default_runtime)
-
-# include_directories(include)
-# include_directories(../odrive_base/include)
-
-# ament_auto_add_library(
-#   odrive_ros2_control_plugin SHARED
-#   ../odrive_base/src/epoll_event_loop.cpp
-#   ../odrive_base/src/socket_can.cpp
-#   src/odrive_hardware_interface.cpp
-# )
+ament_export_dependencies(rosidl_default_runtime)
 
 include_directories(include)
+include_directories(../odrive_base/include)
+
+add_library(
+  mason_hardware SHARED
+  ../odrive_base/src/epoll_event_loop.cpp
+  ../odrive_base/src/socket_can.cpp
+  src/mason_interface2.cpp
+  src/contact_sensors.cpp
+)
+
+# include_directories(include)
 
 find_library(GPIOD_LIBRARY gpiod)
 if(NOT GPIOD_LIBRARY)
@@ -61,7 +62,7 @@ if(NOT GPIOD_LIBRARY)
 endif()
 
 # Add the library
-add_library(mason_hardware SHARED src/mason_interface.cpp src/motor.cpp src/contact_sensors.cpp)
+# add_library(mason_hardware SHARED src/mason_interface.cpp src/motor.cpp src/contact_sensors.cpp)
 target_link_libraries(${PROJECT_NAME} ${GPIOD_LIBRARY} gpiodcxx)
 
 # Link any dependencies
@@ -88,8 +89,11 @@ install(
 )
 
 install(
-  DIRECTORY include/
-  DESTINATION include/mason_hardware
+  DIRECTORY
+  include/
+  ../odrive_base/include/
+  DESTINATION
+  include/mason_hardware
 )
 
 # Enable testing if required
