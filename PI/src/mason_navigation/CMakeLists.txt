@@ -31,10 +31,10 @@ ament_target_dependencies(autoartisan2
     ${THIS_PACKAGE_INCLUDE_DEPENDS}
 )
 
-install(
-  DIRECTORY include/
-  DESTINATION include/autoartisan2
-)
+# install(
+#   DIRECTORY include/
+#   DESTINATION include/autoartisan2
+# )
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
