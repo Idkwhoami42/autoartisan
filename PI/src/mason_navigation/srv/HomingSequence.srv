@@ -1,0 +1,8 @@
+# HomingSequence.srv
+
+# Request (empty request in this case)
+---
+
+# Response
+float64 x_limit
+float64 y_limit

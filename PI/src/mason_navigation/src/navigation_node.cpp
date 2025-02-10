@@ -10,10 +10,13 @@
 #include <sensor_msgs/msg/point_cloud.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
+#include "mason_navigation/srv/homing_sequence.hpp"
 
 #define DEG_PASSED true
 #define WALL_H_CM 91.75
 #define WALL_W_CM 99.5
+
+using namespace std::chrono_literals;
 
 class Update {
 public:
@@ -43,16 +46,16 @@ public:
     NavigationNode() : Node("nav_node") {
         this->update = Update(std::make_pair(0.0, 0.0));
         
-        auto homing_callback =
-            [this](geometry_msgs::msg::Point::UniquePtr msg) -> void {
-                // In the hardware interface z is set based on whether homing was successful
-                if (msg->z) {
-                    this->wallSpanDegX = msg->x;
-                    this->wallSpanDegY = msg->y;
-                    this->multiplier_x = (DEG_PASSED) ? 1 : static_cast<float>(msg->x / WALL_W_CM);
-                    this->multiplier_y = (DEG_PASSED) ? 1 : static_cast<float>(msg->y / WALL_H_CM);
-                }
-            };
+        // auto homing_callback =
+        //     [this](geometry_msgs::msg::Point::UniquePtr msg) -> void {
+        //         // In the hardware interface z is set based on whether homing was successful
+        //         if (msg->z) {
+        //             this->wallSpanDegX = msg->x;
+        //             this->wallSpanDegY = msg->y;
+        //             this->multiplier_x = (DEG_PASSED) ? 1 : static_cast<float>(msg->x / WALL_W_CM);
+        //             this->multiplier_y = (DEG_PASSED) ? 1 : static_cast<float>(msg->y / WALL_H_CM);
+        //         }
+        //     };
 
         auto tracking_callback =
             [this](sensor_msgs::msg::JointState::UniquePtr msg) -> void {
@@ -66,13 +69,24 @@ public:
                 this->imgProcCallback(std::move(msg));
             };
         
-        this->homing_subscription_ = this->create_subscription<geometry_msgs::msg::Point>("limits", 10, homing_callback);
+        // this->homing_subscription_ = this->create_subscription<geometry_msgs::msg::Point>("limits", 10, homing_callback);
         this->position_subscription_ = this->create_subscription<sensor_msgs::msg::JointState>("joint_state", 10, tracking_callback);
         this->position_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("forward_position_controller/commands", 10);
         this->path_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("path", 10);
         this->img_proc_subscription_ = this->create_subscription<sensor_msgs::msg::PointCloud>("detection", 10, img_proc_callback);
     }
 
+    bool serviceIsAvailable(rclcpp::Client<mason_navigation::srv::HomingSequence>::SharedPtr client) {
+        while (!client->wait_for_service(1s)) {
+            if (!rclcpp::ok()) {
+                RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the service. Exiting...");
+                return false;
+            }
+            RCLCPP_INFO(this->get_logger(), "Service not available, waiting again...");
+        }
+        return true;
+    }
+    
     int calcLength(const std::vector<int> &points) {
         return points[points.size()-1] - points[0];
     }
@@ -244,23 +258,67 @@ public:
         }
     }
 
+    float wallSpanDegX = -1;
+    float wallSpanDegY = -1;
+    float min_x = 0;
+    float min_y = 0;
+    float max_x = 0;
+    float max_y = 0;
+
 private:
-    rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr homing_subscription_;
+    // rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr homing_subscription_;
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr position_subscription_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr position_publisher_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr path_publisher_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud>::SharedPtr img_proc_subscription_;
+    
     float multiplier_x = 1;
     float multiplier_y = 1;
-    float wallSpanDegX = -1;
-    float wallSpanDegY = -1;
     Update update;
     std::vector<std::pair<std::pair<float, float>, std::pair<float, float>>> paths = {};
 };
 
-int main(int argc, char * argv[]) {
+int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<NavigationNode>());
+
+    auto nav_node = std::make_shared<NavigationNode>();
+    auto request = std::make_shared<mason_navigation::srv::HomingSequence::Request>();
+
+    rclcpp::Client<mason_navigation::srv::HomingSequence>::SharedPtr homing_client = 
+      nav_node->create_client<mason_navigation::srv::HomingSequence>("home_mason");
+    rclcpp::Client<mason_navigation::srv::HomingSequence>::SharedPtr return_to_start_client = 
+      nav_node->create_client<mason_navigation::srv::HomingSequence>("return_mason_to_start");
+
+    bool ready = false;
+    while(!ready) nav_node->serviceIsAvailable(return_to_start_client);
+
+    auto result = return_to_start_client->async_send_request(request);
+    if (rclcpp::spin_until_future_complete(nav_node, result) ==
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
+        RCLCPP_INFO(nav_node->get_logger(), "min_x: %f, min_y: %f", result.get()->x_limit, result.get()->y_limit);
+        nav_node->min_x = result.get()->x_limit;
+        nav_node->min_y = result.get()->y_limit;
+    } else {
+        RCLCPP_ERROR(nav_node->get_logger(), "Failed to call service return_mason_to_start");
+    }
+
+    ready = false;
+    while(!ready) nav_node->serviceIsAvailable(homing_client);
+
+    result = homing_client->async_send_request(request);
+    if (rclcpp::spin_until_future_complete(nav_node, result) ==
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
+        RCLCPP_INFO(nav_node->get_logger(), "max_x: %f, max_y: %f", result.get()->x_limit, result.get()->y_limit);
+        nav_node->max_x = result.get()->x_limit;
+        nav_node->max_y = result.get()->y_limit;
+
+    } else {
+        RCLCPP_ERROR(nav_node->get_logger(), "Failed to call service home_mason");
+    }
+
+    rclcpp::spin(nav_node);
     rclcpp::shutdown();
     return 0;
 }
