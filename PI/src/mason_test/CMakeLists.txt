@@ -10,6 +10,8 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(odrive_can REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -23,9 +25,18 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-add_executable(test_node src/test_node.cpp)
-ament_target_dependencies(test_node rclcpp std_msgs odrive_can)
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/Float.srv"
+  DEPENDENCIES std_msgs
+)
 
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_typesupport_cpp)
+
+
+add_executable(test_node src/test_node.cpp)
+ament_target_dependencies(test_node rclcpp std_msgs odrive_can rosidl_default_runtime)
+
+target_link_libraries(test_node ${cpp_typesupport_target})
 
 install(TARGETS test_node
   DESTINATION lib/${PROJECT_NAME})
