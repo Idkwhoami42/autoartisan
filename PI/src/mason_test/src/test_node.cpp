@@ -1,11 +1,11 @@
 #include <chrono>
-#include <float32_multi_array__struct.hpp>
 
-#include "odrive_base/include/odrive_enums.h"
 #include "odrive_can/msg/control_message.hpp"
 #include "odrive_can/msg/controller_status.hpp"
 #include "odrive_can/srv/axis_state.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/float32_multi_array.hpp"
+#include "../include/mason_test/odrive_enums.h"
 
 using namespace std::chrono_literals;
 
