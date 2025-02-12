@@ -1,11 +1,11 @@
 #include <chrono>
 
+#include "../include/mason_test/odrive_enums.h"
 #include "odrive_can/msg/control_message.hpp"
 #include "odrive_can/msg/controller_status.hpp"
 #include "odrive_can/srv/axis_state.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float32_multi_array.hpp"
-#include "../include/mason_test/odrive_enums.h"
 
 using namespace std::chrono_literals;
 
@@ -23,13 +23,19 @@ class TestNode : public rclcpp::Node {
 
         RCLCPP_INFO(this->get_logger(), "State clients created; Setting closed loop control...");
 
-        set_axis_state(this->request_axis_state_client0, 0,
+        bool ok_axis0 = set_axis_state(this->request_axis_state_client0, 0,
                        ODriveAxisState::AXIS_STATE_CLOSED_LOOP_CONTROL);
-        set_axis_state(this->request_axis_state_client1, 1,
+        bool ok_axis1 = set_axis_state(this->request_axis_state_client1, 1,
                        ODriveAxisState::AXIS_STATE_CLOSED_LOOP_CONTROL);
-        set_axis_state(this->request_axis_state_client2, 2,
+        bool ok_axis2 = set_axis_state(this->request_axis_state_client2, 2,
                        ODriveAxisState::AXIS_STATE_CLOSED_LOOP_CONTROL);
 
+        if (!ok_axis0 || !ok_axis1 || !ok_axis2) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to set closed loop control for all axes");
+            return;
+        }
+
+        
         RCLCPP_INFO(this->get_logger(), "Closed loop control set");
 
         // a sub wihch takes float array
@@ -101,17 +107,21 @@ class TestNode : public rclcpp::Node {
     }
 
     void timer_callback() {
-        if (std::abs(this->axis0_pos - 20) <= 1e-2) {
-            RCLCPP_INFO(this->get_logger(), "Axis 0 reached position 20");
-            odrive_can::msg::ControlMessage control_msg0;
-            control_msg0.control_mode = 3;  // position control
-            control_msg0.input_mode = 5;    // trajectory mode
-            control_msg0.input_pos = 20;
-            this->pub0->publish(control_msg0);
-        }
+        RCLCPP_INFO(this->get_logger(),
+                   "Axis 0 position  = %f, Axis 1 position = %f, Axis 2 position = %f",
+                   this->axis0_pos, this->axis1_pos, this->axis2_pos);
+        // if (std::abs(this->axis0_pos - 20) <= 0.5) {
+        //     RCLCPP_INFO(this->get_logger(), "Axis 0 reached position 20");
+        //     odrive_can::msg::ControlMessage control_msg0;
+        //     control_msg0.control_mode = 3;  // position control
+        //     control_msg0.input_mode = 1;    // trajectory mode
+        //     control_msg0.input_pos = 20;
+        //     this->pub0->publish(control_msg0);
+        // }
     }
 
     ~TestNode() {
+        RCLCPP_INFO(this->get_logger(), "Shutting down");
         set_axis_state(this->request_axis_state_client0, 0, ODriveAxisState::AXIS_STATE_IDLE);
         set_axis_state(this->request_axis_state_client1, 1, ODriveAxisState::AXIS_STATE_IDLE);
         set_axis_state(this->request_axis_state_client2, 2, ODriveAxisState::AXIS_STATE_IDLE);
@@ -134,9 +144,9 @@ class TestNode : public rclcpp::Node {
 
     rclcpp::TimerBase::SharedPtr timer;
 
-    float axis0_pos, axis1_pos, axis2_pos;
+    float axis0_pos = 0, axis1_pos = 0, axis2_pos = 0;
 
-    void set_axis_state(rclcpp::Client<odrive_can::srv::AxisState>::SharedPtr client, int axis,
+    bool set_axis_state(rclcpp::Client<odrive_can::srv::AxisState>::SharedPtr client, int axis,
                         ODriveAxisState state) {
         while (!client->wait_for_service(500ms)) {
             if (!rclcpp::ok()) {
@@ -151,7 +161,20 @@ class TestNode : public rclcpp::Node {
 
         auto request = std::make_shared<odrive_can::srv::AxisState::Request>();
         request->axis_requested_state = static_cast<int32_t>(state);
-        client->async_send_request(request).wait();
+        
+        auto result = client->async_send_request(request);
+        auto status = result.wait_for(5s);
+
+        if (status == std::future_status::ready) {
+            auto response = result.get();
+            RCLCPP_INFO(this->get_logger(), "response state: %d", response->axis_state);
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Timed out waiting for response for axis %d", axis);
+            return false;
+        }
+
+        return true;
+        
     }
 };
 
