@@ -5,7 +5,7 @@
 
   <xacro:include filename="$(find mason_description)/description/urdf/mason_description.urdf.xacro" />
 
-  <xacro:include filename="$(find mason_description)/description/urdf/mason.ros2_control.xacro" />
+  <xacro:include filename="$(find mason_description)/description/urdf/mason2.ros2_control.xacro" />
 
   <xacro:mason />
 
