@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(odrive_can REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(std_srvs REQUIRED)
 
 
 if(BUILD_TESTING)
@@ -34,7 +35,7 @@ rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_type
 
 
 add_executable(test_node src/test_node.cpp)
-ament_target_dependencies(test_node rclcpp std_msgs odrive_can rosidl_default_runtime)
+ament_target_dependencies(test_node rclcpp std_msgs std_srvs odrive_can rosidl_default_runtime)
 
 target_link_libraries(test_node ${cpp_typesupport_target})
 

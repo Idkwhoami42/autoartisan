@@ -8,6 +8,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include "std_msgs/msg/float32_multi_array.hpp"
+#include "std_srvs/srv/empty.hpp"
 
 #define POS_EPSILON 0.15f
 
@@ -50,6 +51,14 @@ class TestNode : public rclcpp::Node {
             "odrive_position_x",
             std::bind(&TestNode::position_x_callback, this, std::placeholders::_1,
                       std::placeholders::_2, std::placeholders::_3));
+
+        this->stop_y_service = this->create_service<std_srvs::srv::Empty>(
+            "odrive_stop_y", std::bind(&TestNode::stop_y_callback, this, std::placeholders::_1,
+                                       std::placeholders::_2, std::placeholders::_3));
+
+        this->stop_x_service = this->create_service<std_srvs::srv::Empty>(
+            "odrive_stop_x", std::bind(&TestNode::stop_x_callback, this, std::placeholders::_1,
+                                       std::placeholders::_2, std::placeholders::_3));
 
         this->pub0 = this->create_publisher<odrive_can::msg::ControlMessage>(
             "odrive_axis0/control_message", 10);
@@ -141,43 +150,29 @@ class TestNode : public rclcpp::Node {
         }
     }
 
-
-    void timer_callback() {
-        RCLCPP_INFO(this->get_logger(),
-                    "Axis 0 position  = %f, Axis 1 position = %f, Axis 2 position = %f",
-                    this->axis0_pos, this->axis1_pos, this->axis2_pos);
-        if (std::abs(this->axis0_pos - 20) <= 0.5) {
-            stop(0);
-        }
-    }
-
-    void stop(int axis) {
-        if (axis < 0 || axis > 2) {
-            RCLCPP_ERROR(this->get_logger(), "Invalid axis number, must be 0, 1, or 2");
-            return;
-        }
-
-        RCLCPP_INFO(this->get_logger(), "Stopping axis %d", axis);
+    void stop_x_callback(const std::shared_ptr<rmw_request_id_t> request_header,
+                         const std::shared_ptr<std_srvs::srv::Empty::Request> req,
+                         const std::shared_ptr<std_srvs::srv::Empty::Response> res) {
         odrive_can::msg::ControlMessage control_msg;
-        control_msg.control_mode = CONTROL_MODE_POSITION_CONTROL;  // position control
+        control_msg.control_mode = CONTROL_MODE_POSITION_CONTROL;
         control_msg.input_mode = INPUT_MODE_PASSTHROUGH;
 
-        switch (axis) {
-            case 0:
-                control_msg.input_pos = this->axis0_pos;
-                this->pub0->publish(control_msg);
-                break;
-            case 1:
-                control_msg.input_pos = this->axis1_pos;
-                this->pub1->publish(control_msg);
-                break;
-            case 2:
-                control_msg.input_pos = this->axis2_pos;
-                this->pub2->publish(control_msg);
-                break;
-            default:
-                RCLCPP_ERROR(this->get_logger(), "Invalid axis number, must be 0, 1, or 2");
-        }
+        control_msg.input_pos = this->axis0_pos;
+        this->pub0->publish(control_msg);
+    }
+
+    void stop_y_callback(const std::shared_ptr<rmw_request_id_t> request_header,
+                         const std::shared_ptr<std_srvs::srv::Empty::Request> req,
+                         const std::shared_ptr<std_srvs::srv::Empty::Response> res) {
+        odrive_can::msg::ControlMessage control_msg;
+        control_msg.control_mode = CONTROL_MODE_POSITION_CONTROL;
+        control_msg.input_mode = INPUT_MODE_PASSTHROUGH;
+
+        control_msg.input_pos = this->axis1_pos;
+        this->pub1->publish(control_msg);
+
+        control_msg.input_pos = this->axis2_pos;
+        this->pub2->publish(control_msg);
     }
 
     ~TestNode() {
@@ -205,6 +200,8 @@ class TestNode : public rclcpp::Node {
 
     rclcpp::Service<mason_test::srv::Float>::SharedPtr position_y_service;
     rclcpp::Service<mason_test::srv::Float>::SharedPtr position_x_service;
+    rclcpp::Service<std_srvs::srv::Empty>::SharedPtr stop_y_service;
+    rclcpp::Service<std_srvs::srv::Empty>::SharedPtr stop_x_service;
 
     rclcpp::TimerBase::SharedPtr timer;
 
