@@ -13,3 +13,6 @@
 [submodule "PI/src/uros/micro_ros_msgs"]
 	path = PI/src/uros/micro_ros_msgs
 	url = https://github.com/micro-ROS/micro_ros_msgs
+[submodule "PI/src/ros_odrive"]
+	path = PI/src/ros_odrive
+	url = https://github.com/odriverobotics/ros_odrive.git

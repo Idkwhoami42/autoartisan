@@ -104,7 +104,7 @@ def generate_launch_description():
         [
             FindPackageShare("mason_control"),
             "config",
-            "mason_test2.yaml",
+            "mason.yaml",
         ]
     )
     # rviz_config_file = PathJoinSubstitution(
