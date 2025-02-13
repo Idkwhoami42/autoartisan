@@ -9,7 +9,7 @@
 #include "std_msgs/msg/float32.hpp"
 #include "std_msgs/msg/float32_multi_array.hpp"
 
-#define POS_EPSILON 0.3f
+#define POS_EPSILON 0.15f
 
 using namespace std::chrono_literals;
 
@@ -58,27 +58,30 @@ class TestNode : public rclcpp::Node {
         this->pub2 = this->create_publisher<odrive_can::msg::ControlMessage>(
             "odrive_axis2/control_message", 10);
 
-        this->sub1 = this->create_subscription<odrive_can::msg::ControllerStatus>(
+        this->sub0 = this->create_subscription<odrive_can::msg::ControllerStatus>(
             "odrive_axis0/controller_status", 10,
             [this](const odrive_can::msg::ControllerStatus::SharedPtr msg) {
                 if (std::isnan(axis0_offset)) axis0_offset = msg->pos_estimate;
                 axis0_pos = msg->pos_estimate;
+                RCLCPP_INFO(this->get_logger(), "Axis 0 position: %f", msg->pos_estimate);
             });
-        this->sub2 = this->create_subscription<odrive_can::msg::ControllerStatus>(
+        this->sub1 = this->create_subscription<odrive_can::msg::ControllerStatus>(
             "odrive_axis1/controller_status", 10,
             [this](const odrive_can::msg::ControllerStatus::SharedPtr msg) {
                 if (std::isnan(axis1_offset)) axis1_offset = msg->pos_estimate;
                 axis1_pos = msg->pos_estimate;
+                RCLCPP_INFO(this->get_logger(), "Axis 1 position: %f", msg->pos_estimate);
             });
-        this->sub0 = this->create_subscription<odrive_can::msg::ControllerStatus>(
+        this->sub2 = this->create_subscription<odrive_can::msg::ControllerStatus>(
             "odrive_axis2/controller_status", 10,
             [this](const odrive_can::msg::ControllerStatus::SharedPtr msg) {
                 if (std::isnan(axis2_offset)) axis2_offset = msg->pos_estimate;
                 axis2_pos = msg->pos_estimate;
+                RCLCPP_INFO(this->get_logger(), "Axis 2 position: %f", msg->pos_estimate);
             });
 
         // create a timer every 100ms
-        this->timer = this->create_wall_timer(100ms, std::bind(&TestNode::timer_callback, this));
+        // this->timer = this->create_wall_timer(100ms, std::bind(&TestNode::timer_callback, this));
     }
 
     void position_y_callback(const std::shared_ptr<rmw_request_id_t> request_header,
@@ -88,13 +91,13 @@ class TestNode : public rclcpp::Node {
         RCLCPP_INFO(this->get_logger(), "Request: %f", request->input_pos);
 
         float axis1_newpos = request->input_pos + this->axis1_offset;
-        float axis2_newpos = request->input_pos + this->axis2_offset;
+        float axis2_newpos = -1 * request->input_pos + this->axis2_offset;
         this->move(1, axis1_newpos);
         this->move(2, axis2_newpos);
 
-        while (!float_compare(this->axis1_pos, axis1_newpos, POS_EPSILON) ||
-               !float_compare(this->axis2_pos, axis2_newpos, POS_EPSILON)) {
-        }
+        // while (!float_compare(this->axis1_pos, axis1_newpos, POS_EPSILON) ||
+        //        !float_compare(this->axis2_pos, axis2_newpos, POS_EPSILON)) {
+        // }
 
         return;
     }
@@ -105,11 +108,11 @@ class TestNode : public rclcpp::Node {
         RCLCPP_INFO(this->get_logger(), "Position X callback called");
         RCLCPP_INFO(this->get_logger(), "Request: %f", request->input_pos);
 
-        float axis0_newpos = request->input_pos + this->axis0_offset;
+        float axis0_newpos = -1 * request->input_pos + this->axis0_offset;
         move(0, axis0_newpos);
 
-        while (!float_compare(this->axis1_pos, axis0_newpos, POS_EPSILON)) {
-        }
+        // while (!float_compare(this->axis1_pos, axis0_newpos, POS_EPSILON)) {
+        // }
 
         return;
     }
@@ -138,42 +141,6 @@ class TestNode : public rclcpp::Node {
         }
     }
 
-    void position_callback(std_msgs::msg::Float32MultiArray::SharedPtr msg) {
-        RCLCPP_INFO(this->get_logger(), "Position callback called");
-        if (msg->data.size() != 3) {
-            RCLCPP_ERROR(this->get_logger(), "Invalid message size");
-            return;
-        }
-        RCLCPP_INFO(this->get_logger(), "axis_0: %f, axis_1: %f, axis_2: %f", msg->data[0],
-                    msg->data[1], msg->data[2]);
-
-        float axis_0 = msg->data[0] + axis0_offset;
-        float axis_1 = msg->data[1] + axis1_offset;
-        float axis_2 = msg->data[2] + axis2_offset;
-
-        // ros2 topic pub /odrive_axis0/control_message odrive_can/msg/ControlMessage
-        // "{control_mode: 2, input_mode: 1, input_pos: 0.0, input_vel: 1.0, input_torque: 0.0}"
-
-        odrive_can::msg::ControlMessage control_msg0, control_msg1, control_msg2;
-
-        control_msg0.control_mode = CONTROL_MODE_POSITION_CONTROL;
-        control_msg0.input_mode = INPUT_MODE_TRAP_TRAJ;
-        control_msg0.input_pos = axis_0;
-
-        control_msg1.control_mode = CONTROL_MODE_POSITION_CONTROL;
-        control_msg1.input_mode = INPUT_MODE_TRAP_TRAJ;
-        control_msg1.input_pos = axis_1;
-
-        control_msg2.control_mode = CONTROL_MODE_POSITION_CONTROL;
-        control_msg2.input_mode = INPUT_MODE_TRAP_TRAJ;
-        control_msg2.input_pos = axis_2;
-
-        // publish control messages
-
-        this->pub0->publish(control_msg0);
-        this->pub1->publish(control_msg1);
-        this->pub2->publish(control_msg2);
-    }
 
     void timer_callback() {
         RCLCPP_INFO(this->get_logger(),
@@ -214,11 +181,13 @@ class TestNode : public rclcpp::Node {
     }
 
     ~TestNode() {
-        RCLCPP_INFO(this->get_logger(), "Shutting down");
-        set_axis_state(this->request_axis_state_client0, 0, ODriveAxisState::AXIS_STATE_IDLE);
-        set_axis_state(this->request_axis_state_client1, 1, ODriveAxisState::AXIS_STATE_IDLE);
-        set_axis_state(this->request_axis_state_client2, 2, ODriveAxisState::AXIS_STATE_IDLE);
-        RCLCPP_INFO(this->get_logger(), "Set axis states to idle, shutting down properly");
+        RCLCPP_INFO(this->get_logger(), "Shutting down node");
+        // set_axis_state(this->request_axis_state_client0, 0, ODriveAxisState::AXIS_STATE_IDLE,
+        // false); set_axis_state(this->request_axis_state_client1, 1,
+        // ODriveAxisState::AXIS_STATE_IDLE, false);
+        // set_axis_state(this->request_axis_state_client2, 2, ODriveAxisState::AXIS_STATE_IDLE,
+        // false);
+        RCLCPP_INFO(this->get_logger(), "Node destroyed");
     }
 
    private:
@@ -243,8 +212,8 @@ class TestNode : public rclcpp::Node {
     float axis0_offset = nanf(""), axis1_offset = nanf(""), axis2_offset = nanf("");
 
     bool set_axis_state(rclcpp::Client<odrive_can::srv::AxisState>::SharedPtr client, int axis,
-                        ODriveAxisState state) {
-        while (!client->wait_for_service(500ms)) {
+                        ODriveAxisState state, bool wait = true) {
+        while (wait && !client->wait_for_service(500ms)) {
             if (!rclcpp::ok()) {
                 RCLCPP_ERROR(this->get_logger(),
                              "Interrupted while waiting for the service for axis %d. Exiting.",
@@ -259,11 +228,14 @@ class TestNode : public rclcpp::Node {
         request->axis_requested_state = static_cast<int32_t>(state);
 
         auto result = client->async_send_request(request);
-        auto status = result.wait_for(5s);
 
-        if (status == std::future_status::ready) {
+        if (!wait) return true;
+
+        if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result, 5s) ==
+            rclcpp::FutureReturnCode::SUCCESS) {
             auto response = result.get();
-            RCLCPP_INFO(this->get_logger(), "response state: %d", response->axis_state);
+            RCLCPP_INFO(this->get_logger(), "successfully got response state: %d",
+                        response->axis_state);
         } else {
             RCLCPP_ERROR(this->get_logger(), "Timed out waiting for response for axis %d", axis);
             return false;
@@ -275,7 +247,7 @@ class TestNode : public rclcpp::Node {
     bool float_compare(float a, float b, float epsilon) { return std::fabs(a - b) <= epsilon; }
 };
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<TestNode>());
     rclcpp::shutdown();
