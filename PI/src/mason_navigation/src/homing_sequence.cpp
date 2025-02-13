@@ -1,37 +1,17 @@
-// #include "srv/homing_sequence.hpp"// 
 #include "mason_navigation/srv/homing_sequence.hpp"
-#include "std_msgs/msg/float64_multi_array.hpp"
+#include "mason_test/srv/float.hpp"
+#include "std_srvs/srv/empty.hpp"
 #include "std_msgs/msg/string.hpp"
-#include "sensor_msgs/msg/joint_state.hpp"
-// #include "mason_hardware/contact_sensors.hpp"
+#include "odrive_can/msg/controller_status.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include <memory>
 #include <vector>
+#include <cmath>
 #include <string>
 
-// const char *chip = "gpiochip4";
+using namespace std::chrono_literals;
 std::vector<std::string> joint_names = {"motor_horizontal", "motor_left", "motor_right"};
-// std::vector<std::pair<unsigned int, std::string>> contactSensorPins = {
-//         {27, "RIGHT"}, {22, "TOP"}, {23, "BOTTOM"}, {24, "LEFT"}};
-// std::mutex activeSensorMutex;
-// std::string activeSensor = "";
-// std::chrono::nanoseconds t = std::chrono::nanoseconds{10000};
-
-// void pollPins(ContactSensors *contactSensors) {
-//     while (contactSensors->keepPolling.load()) {
-//         if (contactSensors) {
-//             contactSensors->event_lines = contactSensors->bulk.event_wait(t);
-//             if (!contactSensors->event_lines.empty()) {
-//                 for (const auto &event : contactSensors->event_lines) {
-//                     std::unique_lock<std::mutex> lock(activeSensorMutex);
-//                     activeSensor =
-//                         contactSensors->buttonCallback(event.offset(), event.event_read());
-//                 }
-//             }
-//         }
-//     }
-// }
 
 class HomingSequenceService : public rclcpp::Node {
 
@@ -49,19 +29,63 @@ public:
 
         this->contact_sensor_sub_ = this->create_subscription<std_msgs::msg::String>(
             "/contact_sensor_triggered", 10,
-            std::bind(&HomingSequenceService::contact_sensor_callback, this, std::placeholders::_1)
+            [this](const std_msgs::msg::String::SharedPtr msg) {
+                this->sensor = msg->data;
+                RCLCPP_INFO(this->get_logger(), "%s CONTACT SENSOR TRIGGERED.", msg->data.c_str());
+            }
         );
 
-        // this->subscription_ = this->create_subscription<sensor_msgs::msg::JointState>(
-        //     "/joint_states", 10,
-        //     std::bind(&HomingSequenceService::joint_state_callback, this, std::placeholders::_1)
-        // );
+        this->sub0 = this->create_subscription<odrive_can::msg::ControllerStatus>(
+            "odrive_axis0/controller_status", 10,
+            [this](const odrive_can::msg::ControllerStatus::SharedPtr msg) {
+                if (std::isnan(axis0_offset)) axis0_offset = msg->pos_estimate;
+                this->joint_positions[joint_names[0]] = msg->pos_estimate;
+                RCLCPP_INFO(this->get_logger(), "%s position: %f", joint_names[0].c_str(), msg->pos_estimate);
+            });
+        this->sub1 = this->create_subscription<odrive_can::msg::ControllerStatus>(
+            "odrive_axis1/controller_status", 10,
+            [this](const odrive_can::msg::ControllerStatus::SharedPtr msg) {
+                if (std::isnan(axis1_offset)) axis1_offset = msg->pos_estimate;
+                this->joint_positions[joint_names[1]] = msg->pos_estimate;
+                RCLCPP_INFO(this->get_logger(), "%s position: %f", joint_names[1].c_str(), msg->pos_estimate);
+            });
+        this->sub2 = this->create_subscription<odrive_can::msg::ControllerStatus>(
+            "odrive_axis2/controller_status", 10,
+            [this](const odrive_can::msg::ControllerStatus::SharedPtr msg) {
+                if (std::isnan(axis2_offset)) axis2_offset = msg->pos_estimate;
+                this->joint_positions[joint_names[2]] = msg->pos_estimate;
 
-        this->publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
-            "/forward_velocity_controller/commands", 10
-        );
+                RCLCPP_INFO(this->get_logger(), "%s position: %f", joint_names[2].c_str(), msg->pos_estimate);
+            });
+
+        this->position_y_client_ = this->create_client<mason_test::srv::Float>("odrive_position_y");
+        this->position_x_client_ = this->create_client<mason_test::srv::Float>("odrive_position_x");
+        this->stop_y_client_ = this->create_client<std_srvs::srv::Empty>("odrive_stop_y");
+        this->stop_x_client_ = this->create_client<std_srvs::srv::Empty>("odrive_stop_x");
 
         RCLCPP_INFO(this->get_logger(), "Service is ready to receive requests.");
+    }
+
+    bool positionServiceIsAvailable(rclcpp::Client<mason_test::srv::Float>::SharedPtr client) {
+        while (!client->wait_for_service(1s)) {
+            if (!rclcpp::ok()) {
+                RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for position service. Exiting...");
+                return false;
+            }
+            RCLCPP_INFO(this->get_logger(), "Position service not available, waiting again...");
+        }
+        return true;
+    }
+
+    bool stoppingServiceIsAvailable(rclcpp::Client<std_srvs::srv::Empty>::SharedPtr client) {
+        while (!client->wait_for_service(1s)) {
+            if (!rclcpp::ok()) {
+                RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for stopping service. Exiting...");
+                return false;
+            }
+            RCLCPP_INFO(this->get_logger(), "Stopping service not available, waiting again...");
+        }
+        return true;
     }
 
 private:
@@ -73,29 +97,22 @@ private:
         bool homed_horizontally = false;
         bool homed_vertically = false;
 
-        auto message = std_msgs::msg::Float64MultiArray();
-        message.data = {0.0, 0.5, 0.5};
+        auto position_request = std::make_shared<mason_test::srv::Float::Request>();
+        auto stop_request = std::make_shared<std_srvs::srv::Empty::Request>();
+        position_request->input_pos = 1000.0f;
 
-        this->publisher_->publish(message);
+        bool ready = false;
+        while(!ready) {
+            ready = this->positionServiceIsAvailable(this->position_y_client_);
+            ready = ready && this->stoppingServiceIsAvailable(this->stop_y_client_);
+        }
 
-        // while (!homed_vertically) {
-        //     std::string sensor = "";
-        //     {
-        //         std::unique_lock<std::mutex> lock(activeSensorMutex);
-        //         sensor = activeSensor;
-        //     }
-        //     if (sensor == "TOP") {
-        //         homed_vertically = true;
-        //         message.data = {0.0, 0.0, 0.0};
-        //         this->publisher_->publish(message);
-        //     }
-        // }
+        this->position_y_client_->async_send_request(position_request);
 
         while (!homed_vertically) {
             if (this->sensor == "TOP") {
+                this->stop_y_client_->async_send_request(stop_request);
                 homed_vertically = true;
-                message.data = {0.0, 0.0, 0.0};
-                this->publisher_->publish(message);
             }
         }
 
@@ -113,27 +130,18 @@ private:
 
         response->y_limit = std::min(this->joint_positions["motor_left"], this->joint_positions["motor_right"]);
 
-        message.data = {0.5, 0.0, 0.0};
-        this->publisher_->publish(message);
+        ready = false;
+        while(!ready) {
+            ready = this->positionServiceIsAvailable(this->position_x_client_);
+            ready = ready && this->stoppingServiceIsAvailable(this->stop_x_client_);
+        }
 
-        // while (!homed_horizontally) {
-        //     std::string sensor = "";
-        //     {
-        //         std::unique_lock<std::mutex> lock(activeSensorMutex);
-        //         sensor = activeSensor;
-        //     }
-        //     if (sensor == "RIGHT") {
-        //         homed_horizontally = true;
-        //         message.data = {0.0, 0.0, 0.0};
-        //         this->publisher_->publish(message);
-        //     }
-        // }
+        this->position_x_client_->async_send_request(position_request);
 
         while (!homed_horizontally) {
             if (this->sensor == "RIGHT") {
+                this->stop_x_client_->async_send_request(stop_request);
                 homed_horizontally = true;
-                message.data = {0.0, 0.0, 0.0};
-                this->publisher_->publish(message);
             }
         }
 
@@ -154,28 +162,21 @@ private:
       const std::shared_ptr<mason_navigation::srv::HomingSequence::Request> /*request*/,
       const std::shared_ptr<mason_navigation::srv::HomingSequence::Response> response) {
 
-        auto message = std_msgs::msg::Float64MultiArray();
-        message.data = {0.0, -0.5, -0.5};
+        auto position_request = std::make_shared<mason_test::srv::Float::Request>();
+        auto stop_request = std::make_shared<std_srvs::srv::Empty::Request>();
+        position_request->input_pos = -1000.0f;
 
-        this->publisher_->publish(message);
+        bool ready = false;
+        while(!ready) {
+            ready = this->positionServiceIsAvailable(this->position_y_client_);
+            ready = ready && this->stoppingServiceIsAvailable(this->stop_y_client_);
+        }
 
-        // while (true) {
-        //     std::string sensor = "";
-        //     {
-        //         std::unique_lock<std::mutex> lock(activeSensorMutex);
-        //         sensor = activeSensor;
-        //     }
-        //     if (sensor == "BOTTOM") {
-        //         message.data = {0.0, 0.0, 0.0};
-        //         this->publisher_->publish(message);
-        //         break;
-        //     }
-        // }
+        this->position_y_client_->async_send_request(position_request);
 
         while (true) {
             if (this->sensor == "BOTTOM") {
-                message.data = {0.0, 0.0, 0.0};
-                this->publisher_->publish(message);
+                this->stop_y_client_->async_send_request(stop_request);
                 break;
             }
         }
@@ -194,26 +195,17 @@ private:
 
         response->y_limit = std::min(this->joint_positions["motor_left"], this->joint_positions["motor_right"]);
 
-        message.data = {-0.5, 0.0, 0.0};
-        this->publisher_->publish(message);
+        ready = false;
+        while(!ready) {
+            ready = this->positionServiceIsAvailable(this->position_x_client_);
+            ready = ready && this->stoppingServiceIsAvailable(this->stop_x_client_);
+        }
 
-        // while (true) {
-        //     std::string sensor = "";
-        //     {
-        //         std::unique_lock<std::mutex> lock(activeSensorMutex);
-        //         sensor = activeSensor;
-        //     }
-        //     if (sensor == "LEFT") {
-        //         message.data = {0.0, 0.0, 0.0};
-        //         this->publisher_->publish(message);
-        //         break;
-        //     }
-        // }
+        this->position_x_client_->async_send_request(position_request);
 
         while (true) {
             if (this->sensor == "LEFT") {
-                message.data = {0.0, 0.0, 0.0};
-                this->publisher_->publish(message);
+                this->stop_x_client_->async_send_request(stop_request);
                 break;
             }
         }
@@ -228,35 +220,23 @@ private:
         response->x_limit = this->joint_positions["motor_horizontal"];
     }
 
-    void joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr msg) {
-        for (size_t i = 0; i < msg->name.size(); ++i) {
-            this->joint_positions[msg->name[i]] = msg->position[i];
-        }
-
-        for (auto joint_name : joint_names) {
-            if (joint_positions.find(joint_name) != joint_positions.end()) {
-                RCLCPP_INFO(this->get_logger(), "Position of %s: %.4f", joint_name.c_str(), joint_positions[joint_name]);
-            }
-        }
-    }
-
-    void contact_sensor_callback(const std_msgs::msg::String::SharedPtr msg) {
-        this->sensor = msg->data;
-    }
-
     rclcpp::Service<mason_navigation::srv::HomingSequence>::SharedPtr homing_service_;
     rclcpp::Service<mason_navigation::srv::HomingSequence>::SharedPtr return_to_start_service_;
-    // rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr subscription_;
+    rclcpp::Client<mason_test::srv::Float>::SharedPtr position_x_client_;
+    rclcpp::Client<mason_test::srv::Float>::SharedPtr position_y_client_;
+    rclcpp::Client<std_srvs::srv::Empty>::SharedPtr stop_x_client_;
+    rclcpp::Client<std_srvs::srv::Empty>::SharedPtr stop_y_client_;
+    rclcpp::Subscription<odrive_can::msg::ControllerStatus>::SharedPtr sub0;
+    rclcpp::Subscription<odrive_can::msg::ControllerStatus>::SharedPtr sub2;
+    rclcpp::Subscription<odrive_can::msg::ControllerStatus>::SharedPtr sub1;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr contact_sensor_sub_;
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr publisher_;
-    std::unordered_map<std::string, double> joint_positions;
+    std::unordered_map<std::string, float> joint_positions;
+    float axis0_offset = nanf(""), axis1_offset = nanf(""), axis2_offset = nanf("");
     std::string sensor = "";
 };
 
 int main(int argc, char ** argv) {
     rclcpp::init(argc, argv);
-    // std::unique_ptr<ContactSensors> contactSensors = std::make_unique<ContactSensors>(chip, contactSensorPins);
-    // std::thread polling_thread = std::thread(pollPins, contactSensors.get());
 
     std::shared_ptr<HomingSequenceService> service_node = std::make_shared<HomingSequenceService>();
 
@@ -264,8 +244,6 @@ int main(int argc, char ** argv) {
 
     rclcpp::spin(service_node);
     rclcpp::shutdown();
-
-    // if (polling_thread.joinable()) polling_thread.join();
 
     return 0;
 } 

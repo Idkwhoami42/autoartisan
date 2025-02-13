@@ -42,6 +42,7 @@ class TestNode : public rclcpp::Node {
 
         RCLCPP_INFO(this->get_logger(), "Closed loop control set");
 
+        // POSITION SERVICES
         this->position_y_service = this->create_service<mason_test::srv::Float>(
             "odrive_position_y",
             std::bind(&TestNode::position_y_callback, this, std::placeholders::_1,
@@ -52,6 +53,7 @@ class TestNode : public rclcpp::Node {
             std::bind(&TestNode::position_x_callback, this, std::placeholders::_1,
                       std::placeholders::_2, std::placeholders::_3));
 
+        // STOP SERVICES
         this->stop_y_service = this->create_service<std_srvs::srv::Empty>(
             "odrive_stop_y", std::bind(&TestNode::stop_y_callback, this, std::placeholders::_1,
                                        std::placeholders::_2, std::placeholders::_3));
@@ -101,8 +103,8 @@ class TestNode : public rclcpp::Node {
 
         float axis1_newpos = request->input_pos + this->axis1_offset;
         float axis2_newpos = -1 * request->input_pos + this->axis2_offset;
-        this->move(1, axis1_newpos);
-        this->move(2, axis2_newpos);
+        this->move(1, axis1_newpos, CONTROL_MODE_POSITION_CONTROL, INPUT_MODE_TRAP_TRAJ);
+        this->move(2, axis2_newpos, CONTROL_MODE_POSITION_CONTROL, INPUT_MODE_TRAP_TRAJ);
 
         // while (!float_compare(this->axis1_pos, axis1_newpos, POS_EPSILON) ||
         //        !float_compare(this->axis2_pos, axis2_newpos, POS_EPSILON)) {
@@ -118,7 +120,7 @@ class TestNode : public rclcpp::Node {
         RCLCPP_INFO(this->get_logger(), "Request: %f", request->input_pos);
 
         float axis0_newpos = -1 * request->input_pos + this->axis0_offset;
-        move(0, axis0_newpos);
+        move(0, axis0_newpos, CONTROL_MODE_POSITION_CONTROL, INPUT_MODE_TRAP_TRAJ);
 
         // while (!float_compare(this->axis1_pos, axis0_newpos, POS_EPSILON)) {
         // }
@@ -126,22 +128,22 @@ class TestNode : public rclcpp::Node {
         return;
     }
 
-    void move(int axis, float pos) {
+    void move(int axis, float pos, uint32_t control_mode, uint32_t input_mode) {
         odrive_can::msg::ControlMessage msg;
-        msg.control_mode = CONTROL_MODE_POSITION_CONTROL;
-        msg.input_mode = INPUT_MODE_TRAP_TRAJ;
+        msg.control_mode = control_mode;
+        msg.input_mode = input_mode;
+
+        if (control_mode == CONTROL_MODE_POSITION_CONTROL) msg.input_pos = pos;
+        else if (control_mode == CONTROL_MODE_VELOCITY_CONTROL) msg.input_vel = pos;
 
         switch (axis) {
             case 0:
-                msg.input_pos = pos;
                 this->pub0->publish(msg);
                 break;
             case 1:
-                msg.input_pos = pos;
                 this->pub1->publish(msg);
                 break;
             case 2:
-                msg.input_pos = pos;
                 this->pub2->publish(msg);
                 break;
             default:

@@ -9,10 +9,12 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
-# find_package(mason_hardware REQUIRED)
+find_package(odrive_can REQUIRED)
+find_package(mason_test REQUIRED)
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   rclcpp
@@ -21,6 +23,8 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   std_msgs
   sensor_msgs
   std_msgs
+  std_srvs
+  odrive_can
   rclcpp_components
 )
 
@@ -33,7 +37,7 @@ rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_type
 
 # Ensure generated headers are included
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
-# include_directories(../mason_hardware/include)
+include_directories(../mason_test/include)
 
 # Create shared library
 # add_library(mason_navigation_lib SHARED 
@@ -74,7 +78,7 @@ add_executable(cs_node
 ament_target_dependencies(service_node
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
   rosidl_default_runtime
-  # mason_hardware
+  mason_test
 )
 
 ament_target_dependencies(cs_node
