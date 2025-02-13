@@ -12,7 +12,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
-find_package(mason_hardware REQUIRED)
+# find_package(mason_hardware REQUIRED)
 
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   rclcpp
@@ -20,6 +20,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   geometry_msgs
   std_msgs
   sensor_msgs
+  std_msgs
   rclcpp_components
 )
 
@@ -32,7 +33,7 @@ rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_type
 
 # Ensure generated headers are included
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
-include_directories(../mason_hardware/include)
+# include_directories(../mason_hardware/include)
 
 # Create shared library
 # add_library(mason_navigation_lib SHARED 
@@ -62,19 +63,28 @@ endif()
 # target_link_libraries(mason_navigation_lib ${cpp_typesupport_target})
 
 # Create executable
-add_executable(service_node 
-  ../mason_hardware/src/contact_sensors.cpp
+add_executable(service_node
   src/homing_sequence.cpp
+)
+
+add_executable(cs_node 
+  src/contact_sensor_node.cpp
 )
 
 ament_target_dependencies(service_node
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
   rosidl_default_runtime
-  mason_hardware
+  # mason_hardware
+)
+
+ament_target_dependencies(cs_node
+  ${THIS_PACKAGE_INCLUDE_DEPENDS}
+  rosidl_default_runtime
 )
 
 target_link_libraries(service_node ${cpp_typesupport_target})
-target_link_libraries(service_node ${GPIOD_LIBRARY} gpiodcxx)
+target_link_libraries(cs_node ${cpp_typesupport_target})
+target_link_libraries(cs_node ${GPIOD_LIBRARY} gpiodcxx)
 
 add_executable(navigation_node
   src/navigation_node.cpp
@@ -94,6 +104,10 @@ install(TARGETS
 
 install(TARGETS
   navigation_node
+  DESTINATION lib/${PROJECT_NAME})
+
+install(TARGETS
+  cs_node
   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
