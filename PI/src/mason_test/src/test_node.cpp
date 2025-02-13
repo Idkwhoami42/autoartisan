@@ -69,30 +69,37 @@ class TestNode : public rclcpp::Node {
         this->pub2 = this->create_publisher<odrive_can::msg::ControlMessage>(
             "odrive_axis2/control_message", 10);
 
+        this->pub_position =
+            this->create_publisher<std_msgs::msg::Float32MultiArray>("odrive_position", 10);
+
         this->sub0 = this->create_subscription<odrive_can::msg::ControllerStatus>(
             "odrive_axis0/controller_status", 10,
             [this](const odrive_can::msg::ControllerStatus::SharedPtr msg) {
                 if (std::isnan(axis0_offset)) axis0_offset = msg->pos_estimate;
                 axis0_pos = msg->pos_estimate;
-                RCLCPP_INFO(this->get_logger(), "Axis 0 position: %f", msg->pos_estimate);
+                // RCLCPP_INFO(this->get_logger(), "Axis 0 position: %f", msg->pos_estimate);
             });
         this->sub1 = this->create_subscription<odrive_can::msg::ControllerStatus>(
             "odrive_axis1/controller_status", 10,
             [this](const odrive_can::msg::ControllerStatus::SharedPtr msg) {
                 if (std::isnan(axis1_offset)) axis1_offset = msg->pos_estimate;
                 axis1_pos = msg->pos_estimate;
-                RCLCPP_INFO(this->get_logger(), "Axis 1 position: %f", msg->pos_estimate);
+                // RCLCPP_INFO(this->get_logger(), "Axis 1 position: %f", msg->pos_estimate);
             });
         this->sub2 = this->create_subscription<odrive_can::msg::ControllerStatus>(
             "odrive_axis2/controller_status", 10,
             [this](const odrive_can::msg::ControllerStatus::SharedPtr msg) {
                 if (std::isnan(axis2_offset)) axis2_offset = msg->pos_estimate;
                 axis2_pos = msg->pos_estimate;
-                RCLCPP_INFO(this->get_logger(), "Axis 2 position: %f", msg->pos_estimate);
+                // RCLCPP_INFO(this->get_logger(), "Axis 2 position: %f", msg->pos_estimate);
             });
 
-        // create a timer every 100ms
-        // this->timer = this->create_wall_timer(100ms, std::bind(&TestNode::timer_callback, this));
+        this->position_timer = this->create_wall_timer(50ms, [this]() {
+            std_msgs::msg::Float32MultiArray msg;
+            msg.data.push_back(-1 * (axis0_pos - axis0_offset));
+            msg.data.push_back((axis1_pos - axis1_offset + -1 * (axis2_pos - axis2_offset)) / 2);
+            this->pub_position->publish(msg);
+        });
     }
 
     void position_y_callback(const std::shared_ptr<rmw_request_id_t> request_header,
@@ -196,6 +203,8 @@ class TestNode : public rclcpp::Node {
     rclcpp::Publisher<odrive_can::msg::ControlMessage>::SharedPtr pub1;
     rclcpp::Publisher<odrive_can::msg::ControlMessage>::SharedPtr pub2;
 
+    rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pub_position;
+
     rclcpp::Subscription<odrive_can::msg::ControllerStatus>::SharedPtr sub0;
     rclcpp::Subscription<odrive_can::msg::ControllerStatus>::SharedPtr sub2;
     rclcpp::Subscription<odrive_can::msg::ControllerStatus>::SharedPtr sub1;
@@ -205,7 +214,7 @@ class TestNode : public rclcpp::Node {
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr stop_y_service;
     rclcpp::Service<std_srvs::srv::Empty>::SharedPtr stop_x_service;
 
-    rclcpp::TimerBase::SharedPtr timer;
+    rclcpp::TimerBase::SharedPtr position_timer;
 
     float axis0_pos = 0, axis1_pos = 0, axis2_pos = 0;
     float axis0_offset = nanf(""), axis1_offset = nanf(""), axis2_offset = nanf("");
