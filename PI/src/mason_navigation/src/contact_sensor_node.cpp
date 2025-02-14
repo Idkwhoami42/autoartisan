@@ -1,53 +1,62 @@
-#include <algorithm>
-#include <vector>
-#include <string>
-#include <unordered_map>
-#include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/string.hpp"
-#include <utility>
-#include <gpiod.hpp>
-#include <atomic>
-// #include <iostream>
-#include <mutex>
 #include <stdio.h>
 #include <string.h>
-#include <thread>
 
-// std::mutex activeSensorMutex;
-// std::string activeSensor = "";
-std::chrono::nanoseconds t = std::chrono::nanoseconds{10000};
+#include <algorithm>
+#include <atomic>
+#include <gpiod.hpp>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+
+using namespace std::chrono_literals;
+
+#define RIGHT_CONTACT_PIN 27
+#define TOP_CONTACT_PIN 22
+#define BOTTOM_CONTACT_PIN 23
+#define LEFT_CONTACT_PIN 24
 
 class ContactSensorNode : public rclcpp::Node {
-public:
+   public:
     ContactSensorNode() : Node("contact_sensor_node") {
-        const char* chip_name = "gpiochip4";
+        const char *chip_name = "gpiochip4";
         std::vector<std::pair<unsigned int, std::string>> pinNumbers = {
-        {27, "RIGHT"}, {22, "TOP"}, {23, "BOTTOM"}, {24, "LEFT"}};
+            {RIGHT_CONTACT_PIN, "right"},
+            {TOP_CONTACT_PIN, "top"},
+            {BOTTOM_CONTACT_PIN, "bottom"},
+            {LEFT_CONTACT_PIN, "left"}};
 
         this->chip.open(std::string(chip_name), 3);
         if (!chip) {
-            perror("Error initializing chip");
+            RCLCPP_ERROR(this->get_logger(), "Error opening chip");
+            return;
         }
 
         this->getPins(pinNumbers);
-        std::cout << "Got GPIO offsets from pair vector" << std::endl;
+        RCLCPP_INFO(this->get_logger(), "Got GPIO offsets from pair vector");
         this->bulk = this->chip.get_lines(pins);
 
         if (!bulk) {
             this->chip.reset();
-            std::cerr << "Error storing lines in bulk" << std::endl;
+            RCLCPP_ERROR(this->get_logger(), "Error getting lines from bulk");
+            return;
         }
 
         // ret = gpiod_line_request_bulk_both_edges_events(&bulk, "gpio-monitor");
-        this->bulk.request({"", gpiod::line_request::EVENT_BOTH_EDGES, /*gpiod::line_request::FLAG_BIAS_PULL_UP*/});
+        this->bulk.request({"", gpiod::line_request::EVENT_BOTH_EDGES,
+                            /*gpiod::line_request::FLAG_BIAS_PULL_UP*/});
 
-        for (const auto & pinNumber : pinNumbers) {
+        for (const auto &pinNumber : pinNumbers) {
             this->pinMap[static_cast<int>(pinNumber.first)] = pinNumber.second;
         }
 
-        this->sensor_publisher_ = this->create_publisher<std_msgs::msg::String>(
-            "/contact_sensor_triggered", 10
-        );
+        this->sensor_publisher_ =
+            this->create_publisher<std_msgs::msg::String>("/contact_sensor_triggered", 10);
     }
 
     void buttonCallback(unsigned int pin, gpiod::line_event event) {
@@ -61,7 +70,7 @@ public:
 
     ~ContactSensorNode() {
         if (this->keepPolling.load()) {
-            RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Entered destructor");
+            RCLCPP_INFO(this->get_logger(), "Entered destructor");
             this->keepPolling.store(false);
             // bulk.release();
             this->bulk.~line_bulk();
@@ -72,8 +81,8 @@ public:
     gpiod::line_bulk bulk;
     gpiod::line_bulk event_lines;
     std::atomic<bool> keepPolling{true};
-    
-private:
+
+   private:
     void getPins(std::vector<std::pair<unsigned int, std::string>> pinNumbers) {
         for (auto &pin : pinNumbers) {
             pins.push_back(pin.first);
@@ -81,7 +90,6 @@ private:
     }
 
     std::unordered_map<int, std::string> pinMap;
-    // std::vector<std::string> activeSensors = {};
     gpiod::chip chip;
     std::vector<unsigned int> pins;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr sensor_publisher_;
@@ -90,7 +98,7 @@ private:
 void pollPins(ContactSensorNode *contactSensors) {
     while (contactSensors->keepPolling.load()) {
         if (contactSensors) {
-            contactSensors->event_lines = contactSensors->bulk.event_wait(t);
+            contactSensors->event_lines = contactSensors->bulk.event_wait(10us);
             if (!contactSensors->event_lines.empty()) {
                 for (const auto &event : contactSensors->event_lines) {
                     // std::unique_lock<std::mutex> lock(activeSensorMutex);
@@ -102,7 +110,7 @@ void pollPins(ContactSensorNode *contactSensors) {
     }
 }
 
-int main(int argc, char ** argv) {
+int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
 
     std::shared_ptr<ContactSensorNode> contact_sensor_node = std::make_shared<ContactSensorNode>();
@@ -111,9 +119,7 @@ int main(int argc, char ** argv) {
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Contact sensor node initialized");
 
     rclcpp::spin(contact_sensor_node);
-    rclcpp::on_shutdown([contact_sensor_node]() {
-        contact_sensor_node->~ContactSensorNode();
-    });
+    rclcpp::on_shutdown([contact_sensor_node]() { contact_sensor_node->~ContactSensorNode(); });
 
     if (polling_thread.joinable()) polling_thread.join();
 
