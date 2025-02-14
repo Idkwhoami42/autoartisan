@@ -4,9 +4,13 @@
 #define BRUSH_SERVO_PIN 2
 #define VERTICAL_SMOOTHING_SERVO_PIN 3
 #define HORIZONTAL_SMOOTHING_SERVO_PIN 4
-#define MOTOR_SPEED 15
+#define MOTOR_SPEED 50
 
 #define BRUSH_SERVO_DEFAULT_POSITION 93
+
+#define EXTRUDER_PWM_PIN 5
+#define EXTRUDER_IN1_PIN 6
+#define EXTRUDER_IN2_PIN 7
 
 Servo brushServo;
 Servo verticalSmoothingServo;
@@ -20,12 +24,12 @@ inline void setupSmoothingServos() {
 }
 
 inline void setupBrushMotor() {
-    pinMode(3, OUTPUT);
-    pinMode(4, OUTPUT);
-    pinMode(5, OUTPUT);
+    // pinMode(3, OUTPUT);
+    // pinMode(4, OUTPUT);
+    // pinMode(5, OUTPUT);
 
-    digitalWrite(3, HIGH);
-    digitalWrite(4, LOW);
+    // digitalWrite(3, HIGH);
+    // digitalWrite(4, LOW);
 }
 
 inline void activateBrush() {
@@ -38,37 +42,35 @@ inline void deactivateBrush() {
     brushServo.write(BRUSH_SERVO_DEFAULT_POSITION);
 }
 
-inline void activateVerticalSmoothing() { verticalSmoothingServo.write(93 + 10); }
+inline void activateVerticalSmoothing() { verticalSmoothingServo.write(93 + 75); }
 
-inline void activateHorizontalSmoothing() { horizontalSmoothingServo.write(93 + 10); }
+inline void activateHorizontalSmoothing() { horizontalSmoothingServo.write(93 + 73); }
 
 inline void deactivateVerticalSmoothing() { verticalSmoothingServo.write(93); }
 
 inline void deactivateHorizontalSmoothing() { horizontalSmoothingServo.write(93); }
 
-
 inline void setupExtruderMotor() {
-    pinMode(29, OUTPUT);
-    pinMode(31, OUTPUT);
-    pinMode(32, OUTPUT);
+    pinMode(EXTRUDER_PWM_PIN, OUTPUT);
+    pinMode(EXTRUDER_IN1_PIN, OUTPUT);
+    pinMode(EXTRUDER_IN2_PIN, OUTPUT);
 
-    digitalWrite(29, LOW);
-    digitalWrite(31, LOW);
-    digitalWrite(32, LOW);
+    digitalWrite(EXTRUDER_PWM_PIN, LOW);
+    digitalWrite(EXTRUDER_IN1_PIN, LOW);
+    digitalWrite(EXTRUDER_IN2_PIN, LOW);
 }
 
 inline void activateExtruderMotor() {
-    analogWrite(29, MOTOR_SPEED);
-    digitalWrite(31, HIGH);
-    digitalWrite(32, LOW);
+    analogWrite(EXTRUDER_PWM_PIN, MOTOR_SPEED);
+    digitalWrite(EXTRUDER_IN1_PIN, HIGH);
+    digitalWrite(EXTRUDER_IN2_PIN, LOW);
 }
 
 inline void deactivateExtruderMotor() {
-    analogWrite(29, 0);
-    digitalWrite(31, LOW);
-    digitalWrite(32, LOW);
+    analogWrite(EXTRUDER_PWM_PIN, 0);
+    digitalWrite(EXTRUDER_IN1_PIN, LOW);
+    digitalWrite(EXTRUDER_IN2_PIN, LOW);
 }
-
 
 inline void goForward(int duration) {
     deactivateExtruderMotor();
@@ -83,9 +85,9 @@ inline void goBack(int duration) {
     deactivateExtruderMotor();
     delay(300);
 
-    analogWrite(29, MOTOR_SPEED);
-    digitalWrite(31, LOW);
-    digitalWrite(32, HIGH);
+    analogWrite(EXTRUDER_PWM_PIN, MOTOR_SPEED);
+    digitalWrite(EXTRUDER_IN1_PIN, LOW);
+    digitalWrite(EXTRUDER_IN2_PIN, HIGH);
 
     delay(duration);
 
