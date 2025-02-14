@@ -26,10 +26,10 @@ class ContactSensorNode : public rclcpp::Node {
     ContactSensorNode() : Node("contact_sensor_node") {
         const char *chip_name = "gpiochip4";
         std::vector<std::pair<unsigned int, std::string>> pinNumbers = {
-            {RIGHT_CONTACT_PIN, "right"},
-            {TOP_CONTACT_PIN, "top"},
-            {BOTTOM_CONTACT_PIN, "bottom"},
-            {LEFT_CONTACT_PIN, "left"}};
+            {RIGHT_CONTACT_PIN, "RIGHT"},
+            {TOP_CONTACT_PIN, "TOP"},
+            {BOTTOM_CONTACT_PIN, "BOTTOM"},
+            {LEFT_CONTACT_PIN, "LEFT"}};
 
         this->chip.open(std::string(chip_name), 3);
         if (!chip) {
