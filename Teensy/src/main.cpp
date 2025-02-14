@@ -80,6 +80,10 @@ void subscription_callback(const void *msgin) {
         goForward(1000);
     } else if (msg_led->data == 7) {
         goBack(1000);
+    } else if (msg_led->data == 8) {
+        activateExtruderMotor();
+    } else if (msg_led->data == 9) {
+        deactivateExtruderMotor();
     }
 }
 

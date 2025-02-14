@@ -8,9 +8,10 @@
 #include "mason_test/srv/float.hpp"
 #include "std_srvs/srv/empty.hpp"
 #include "std_msgs/msg/string.hpp"
-#include <geometry_msgs/msg/point.hpp>
-#include <geometry_msgs/msg/point32.hpp>
-#include <sensor_msgs/msg/point_cloud.hpp>
+#include "std_msgs/msg/int32.hpp"
+// #include <geometry_msgs/msg/point.hpp>
+// #include <geometry_msgs/msg/point32.hpp>
+// #include <sensor_msgs/msg/point_cloud.hpp>
 #include <std_msgs/msg/float32_multi_array.hpp>
 #include "mason_navigation/srv/homing_sequence.hpp"
 
@@ -19,6 +20,35 @@
 #define WALL_W_CM 99.5
 
 using namespace std::chrono_literals;
+
+// if (msg_led->data == 0) {
+//     activateBrush();
+// } else if (msg_led->data == 1) {
+//     deactivateBrush();
+// } else if (msg_led->data == 2) {
+//     activateVerticalSmoothing();
+// } else if (msg_led->data == 3) {
+//     activateHorizontalSmoothing();
+// } else if (msg_led->data == 4) {
+//     deactivateVerticalSmoothing();
+// } else if (msg_led->data == 5) {
+//     deactivateHorizontalSmoothing();
+// } else if (msg_led->data == 6) {
+//     goForward(1000);
+// } else if (msg_led->data == 7) {
+//     goBack(1000);
+// } else if (msg_led->data == 8) {
+//     activateExtruderMotor();
+// } else if (msg_led->data == 9) {
+//     deactivateExtruderMotor();
+// }
+
+typedef struct Path {
+    std::pair<float, float> start;
+    std::pair<float, float> end;
+    bool joint_filled;
+    int orientation[2]; // vertical = {2, 4}, horizontal = {3, 5}
+} Path;
 
 class Update {
 public:
@@ -53,7 +83,6 @@ public:
         //         this->imgProcCallback(std::move(msg));
         //     };
         
-        // this->homing_subscription_ = this->create_subscription<geometry_msgs::msg::Point>("limits", 10, homing_callback);
         this->position_subscription_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
             "odrive_position", 10,
             [this](const std_msgs::msg::Float32MultiArray::UniquePtr msg) -> void {
@@ -64,7 +93,9 @@ public:
             [this](const std_msgs::msg::Float32MultiArray::UniquePtr msg) -> void {
                 this->detected_joints.push_back(Update(std::make_pair(msg->data[0], msg->data[1])));
             });
-        this->path_publisher_ = this->create_publisher<std_msgs::msg::Float32MultiArray>("path", 10);
+        // this->path_publisher_ = this->create_publisher<std_msgs::msg::Float32MultiArray>("path", 10);
+        this->tool_publisher_ = this->create_publisher<std_msgs::msg::Int32>(
+            "/mason_fsm_publisher/state", 10);
 
         this->contact_sensor_sub_ = this->create_subscription<std_msgs::msg::String>(
             "/contact_sensor_triggered", 10,
@@ -204,13 +235,13 @@ public:
         return sqrt(dx * dx + dy * dy);
     }
 
-    std::vector<std::pair<float, float>> getPairs(std::vector<geometry_msgs::msg::Point32> points) {
-        std::vector<std::pair<float, float>> res;
-        for (auto point : points) {
-            res.emplace_back(point.x, point.y);
-        }
-        return res;
-    }
+    // std::vector<std::pair<float, float>> getPairs(std::vector<geometry_msgs::msg::Point32> points) {
+    //     std::vector<std::pair<float, float>> res;
+    //     for (auto point : points) {
+    //         res.emplace_back(point.x, point.y);
+    //     }
+    //     return res;
+    // }
 
     std::vector<std::pair<float, float>> getStats(std::vector<std::pair<float, float>> points) {
         auto sum = std::pair<float, float>(0, 0);
@@ -265,73 +296,72 @@ public:
         std::cout << "]," << std::endl;
     }
 
-    std::vector<std::vector<std::pair<float, float>>> clusteringPoints(std::vector<geometry_msgs::msg::Point32> points) {
-        std::sort(points.begin(), points.end(), [](geometry_msgs::msg::Point32 a, geometry_msgs::msg::Point32 b)
-                                    {
-                                        if (a.x == b.x) return a.y < b.y;
-                                        return a.x < b.x;
-                                    });
+    // std::vector<std::vector<std::pair<float, float>>> clusteringPoints(std::vector<geometry_msgs::msg::Point32> points) {
+    //     std::sort(points.begin(), points.end(), [](geometry_msgs::msg::Point32 a, geometry_msgs::msg::Point32 b)
+    //                                 {
+    //                                     if (a.x == b.x) return a.y < b.y;
+    //                                     return a.x < b.x;
+    //                                 });
 
-        std::vector<std::vector<std::pair<float, float>>> result = {{std::make_pair(points[0].x, points[0].y)}};
-        auto stats = getStats(getPairs(points));
-        const float distThreshX = (stats[2].first - stats[1].first) / 4.0;
-        const float distThreshY = (stats[2].second - stats[1].second) / 4.0;
+    //     std::vector<std::vector<std::pair<float, float>>> result = {{std::make_pair(points[0].x, points[0].y)}};
+    //     auto stats = getStats(getPairs(points));
+    //     const float distThreshX = (stats[2].first - stats[1].first) / 4.0;
+    //     const float distThreshY = (stats[2].second - stats[1].second) / 4.0;
 
-        int j = 1;
-        for (size_t i = 1; i < points.size(); ++i) {
-            float x = points[i].x;
-            float y = points[i].y;
+    //     int j = 1;
+    //     for (size_t i = 1; i < points.size(); ++i) {
+    //         float x = points[i].x;
+    //         float y = points[i].y;
 
-            int cluster = checkPreviousClusters(result, j - 1, x, y, distThreshX, distThreshY);
-            if (cluster != -1) {
-                result[cluster].emplace_back(points[i].x, points[i].y);
-            } else {
-                result.push_back({std::make_pair(points[i].x, points[i].y)});
-                j++;
-            }
-        }
+    //         int cluster = checkPreviousClusters(result, j - 1, x, y, distThreshX, distThreshY);
+    //         if (cluster != -1) {
+    //             result[cluster].emplace_back(points[i].x, points[i].y);
+    //         } else {
+    //             result.push_back({std::make_pair(points[i].x, points[i].y)});
+    //             j++;
+    //         }
+    //     }
 
-        // for (size_t i = 0; i < result.size(); ++i) {
-        //     auto centroid = getAvg(result[i]);
-        //     std::cout <<"Cluster" << i+1 << ": ";//"(" << centroid.first << ", " << centroid.second << ")" << std::endl;
-        //     printPoints(result[i]);
-        // }
-        return result;
-    }
+    //     // for (size_t i = 0; i < result.size(); ++i) {
+    //     //     auto centroid = getAvg(result[i]);
+    //     //     std::cout <<"Cluster" << i+1 << ": ";//"(" << centroid.first << ", " << centroid.second << ")" << std::endl;
+    //     //     printPoints(result[i]);
+    //     // }
+    //     return result;
+    // }
 
-    std::vector<std::pair<std::pair<float, float>, std::pair<float, float>>> clustersToPaths(std::vector<std::vector<std::pair<float, float>>> clusters) {
-        std::vector<std::pair<std::pair<float, float>, std::pair<float, float>>> paths;
+    // std::vector<std::pair<std::pair<float, float>, std::pair<float, float>>> clustersToPaths(std::vector<std::vector<std::pair<float, float>>> clusters) {
+    //     std::vector<std::pair<std::pair<float, float>, std::pair<float, float>>> paths;
 
-        for (const auto& cluster : clusters) {
-            if (cluster.empty()) continue;
+    //     for (const auto& cluster : clusters) {
+    //         if (cluster.empty()) continue;
 
-            auto stats = getStats(cluster);
-            auto avg = stats[0];
-            auto min = stats[1];
-            auto max = stats[2];
+    //         auto stats = getStats(cluster);
+    //         auto avg = stats[0];
+    //         auto min = stats[1];
+    //         auto max = stats[2];
         
-            bool isHorizontal = (max.first - min.first) > (max.second - min.second);
+    //         bool isHorizontal = (max.first - min.first) > (max.second - min.second);
 
-            if (isHorizontal) {
-                paths.emplace_back(std::make_pair(std::make_pair(min.first, avg.second),
-                                                std::make_pair(max.first, avg.second)));
-            } else {
-                paths.emplace_back(std::make_pair(std::make_pair(avg.first, min.second),
-                                                std::make_pair(avg.first, max.second)));
-            }
-        }
+    //         if (isHorizontal) {
+    //             paths.emplace_back(std::make_pair(std::make_pair(min.first, avg.second),
+    //                                             std::make_pair(max.first, avg.second)));
+    //         } else {
+    //             paths.emplace_back(std::make_pair(std::make_pair(avg.first, min.second),
+    //                                             std::make_pair(avg.first, max.second)));
+    //         }
+    //     }
 
-        return paths;
-    }
+    //     return paths;
+    // }
 
 
-    void imgProcCallback(sensor_msgs::msg::PointCloud::UniquePtr msg) {
-        std::vector<std::vector<std::pair<float, float>>> clusters = clusteringPoints(msg->points);
-        this->paths = clustersToPaths(clusters);
-    }
+    // void imgProcCallback(sensor_msgs::msg::PointCloud::UniquePtr msg) {
+    //     std::vector<std::vector<std::pair<float, float>>> clusters = clusteringPoints(msg->points);
+    //     this->paths = clustersToPaths(clusters);
+    // }
 
-    void jointingPathPublisher() {
-        auto pathMsg = std_msgs::msg::Float32MultiArray();
+    void moveToXY(float currentX, float currentY, float targetX, float targetY) {
         auto pos_request_x = std::make_shared<mason_test::srv::Float::Request>();
         auto pos_request_y = std::make_shared<mason_test::srv::Float::Request>();
         auto stop_request = std::make_shared<std_srvs::srv::Empty::Request>();
@@ -344,36 +374,60 @@ public:
             ready = ready && stoppingServiceIsAvailable(this->stop_y_client_);
         }
 
-        for (auto path : this->paths) {
-            float currentX = this->update.getPos().first;
-            float currentY = this->update.getPos().second;
+        pos_request_x->input_pos = targetX;
+        pos_request_y->input_pos = targetY;
 
-            
-            if (abs(path.first.first - currentX) < 1e-1 && abs(path.first.second - currentY) < 1e-1) {
-                pathMsg.data = {path.first.first*this->multiplier_x, path.first.second*this->multiplier_y, 
-                    path.second.first*this->multiplier_x, path.second.second*this->multiplier_y};
-            } else if (abs(path.second.first - currentX) < 1e-1 && abs(path.second.second - currentY) < 1e-1) {
-                pathMsg.data = {path.second.first*this->multiplier_x, path.second.second*this->multiplier_y, 
-                    path.first.first*this->multiplier_x, path.first.second*this->multiplier_y};
-            } else {
-                pathMsg.data = {path.first.first, path.first.second, path.second.first, path.second.second};
-                pos_request_x->input_pos = path.first.first;
-                pos_request_y->input_pos = path.first.second;
-                this->position_x_client_->async_send_request(pos_request_x);
-                this->position_y_client_->async_send_request(pos_request_y);
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                this->stop_x_client_->async_send_request(stop_request);
-                this->stop_y_client_->async_send_request(stop_request);
-                // this->position_publisher_->publish(posMsg);
-                while (abs(path.first.first - currentX) > 1e-1 || abs(path.first.second - currentY) > 1e-1) {
-                    currentX = this->update.getPos().first;
-                    currentY = this->update.getPos().second;
-                }
+        this->position_x_client_->async_send_request(pos_request_x);
+        this->position_y_client_->async_send_request(pos_request_y);
+        
+        while (std::abs(targetX - currentX) > 1e-1 || std::abs(targetY - currentY) > 1e-1) {
+            currentX = this->update.getPos().first;
+            currentY = this->update.getPos().second;
+        }
+
+        this->stop_x_client_->async_send_request(stop_request);
+        this->stop_y_client_->async_send_request(stop_request);
+    }
+
+    void publish_tool_msg(int state) {
+        auto tool_msg = std_msgs::msg::Int32();
+        tool_msg.data = state;
+        this->tool_publisher_->publish(tool_msg);
+    }
+
+    void jointPath() {
+        for (auto p : this->paths) {
+            std::vector<float> path = {p.start.first, p.start.second, p.end.first, p.end.second};
+            /*if (abs(p.start.first - currentX) < 1e-1 && abs(p.start.second - currentY) < 1e-1) {
+                path = {p.start.first, p.start.second, p.end.first, p.end.second};
+            } else */
+            if (abs(p.end.first - this->update.getPos().first) < 1e-1 
+                && abs(p.end.second - this->update.getPos().second) < 1e-1) {
+                path = {p.end.first, p.end.second, p.start.first, p.start.second};
             }
-            this->path_publisher_->publish(pathMsg);
-            while (abs(pathMsg.data[2] - currentX) > 1e-1 || abs(pathMsg.data[3] - currentY) > 1e-1) {
-                currentX = this->update.getPos().first;
-                currentY = this->update.getPos().second;
+                
+            moveToXY(this->update.getPos().first, this->update.getPos().second,
+                path[0], path[1]);
+
+            if (!p.joint_filled) {
+                publish_tool_msg(p.orientation[0]);
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                publish_tool_msg(8);
+            } else {
+                publish_tool_msg(0);
+            }
+            // this->path_publisher_->publish(pathMsg);
+            
+            moveToXY(this->update.getPos().first, this->update.getPos().second,
+                    path[2], path[3]);
+            
+            if (!p.joint_filled) {
+                publish_tool_msg(9);
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                publish_tool_msg(p.orientation[1]);
+                p.joint_filled = true;
+            } else {
+                publish_tool_msg(1);
             }
         }
     }
@@ -384,9 +438,9 @@ private:
     // rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr homing_subscription_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr position_subscription_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr joint_subscription_;
-    rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr path_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr tool_publisher_;
     // rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr path_publisher_;
-    rclcpp::Subscription<sensor_msgs::msg::PointCloud>::SharedPtr img_proc_subscription_;
+    // rclcpp::Subscription<sensor_msgs::msg::PointCloud>::SharedPtr img_proc_subscription_;
     rclcpp::Client<mason_test::srv::Float>::SharedPtr position_x_client_;
     rclcpp::Client<mason_test::srv::Float>::SharedPtr position_y_client_;
     rclcpp::Client<std_srvs::srv::Empty>::SharedPtr stop_x_client_;
@@ -402,8 +456,8 @@ private:
         {"TOP", 3}
     };
     Update update;
-    std::vector<std::pair<std::pair<float, float>, std::pair<float, float>>> paths = {};
-    std::vector<Update> detected_joints;
+    std::vector<Path> paths = {};
+    std::vector<Update> detected_joints = {};
 };
 
 int main(int argc, char **argv) {
