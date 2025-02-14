@@ -31,7 +31,7 @@ class CameraNode : public rclcpp::Node {
                 this->P.assign(msg->p.begin(), msg->p.end());
             });
         this->position_sub = this->create_subscription<std_msgs::msg::Float32MultiArray>(
-            "/odrive_position", 10,
+            "odrive_position", 10,
             [this](std_msgs::msg::Float32MultiArray::UniquePtr msg) -> void {
                 this->current_motor_pos_x = msg->data[0];
                 this->current_motor_pos_y = msg->data[1];

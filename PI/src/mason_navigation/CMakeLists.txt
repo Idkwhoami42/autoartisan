@@ -97,6 +97,7 @@ add_executable(navigation_node
 ament_target_dependencies(navigation_node
   ${THIS_PACKAGE_INCLUDE_DEPENDS}
   rosidl_default_runtime
+  mason_test
 )
 
 target_link_libraries(navigation_node ${cpp_typesupport_target})
@@ -121,6 +122,6 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-ament_export_dependencies(${THIS_PACKAGE_INCLUDE_DEPENDS} rosidl_default_runtime)
+ament_export_dependencies(${THIS_PACKAGE_INCLUDE_DEPENDS} rosidl_default_runtime mason_test)
 
 ament_package()

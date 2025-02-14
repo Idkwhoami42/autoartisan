@@ -5,11 +5,13 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp/publisher.hpp"
+#include "mason_test/srv/float.hpp"
+#include "std_srvs/srv/empty.hpp"
+#include "std_msgs/msg/string.hpp"
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/point32.hpp>
 #include <sensor_msgs/msg/point_cloud.hpp>
-#include <sensor_msgs/msg/joint_state.hpp>
-#include <std_msgs/msg/float64_multi_array.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>
 #include "mason_navigation/srv/homing_sequence.hpp"
 
 #define DEG_PASSED true
@@ -45,35 +47,136 @@ class NavigationNode : public rclcpp::Node
 public:
     NavigationNode() : Node("nav_node") {
         this->update = Update(std::make_pair(0.0, 0.0));
-        
-        // auto homing_callback =
-        //     [this](geometry_msgs::msg::Point::UniquePtr msg) -> void {
-        //         // In the hardware interface z is set based on whether homing was successful
-        //         if (msg->z) {
-        //             this->wallSpanDegX = msg->x;
-        //             this->wallSpanDegY = msg->y;
-        //             this->multiplier_x = (DEG_PASSED) ? 1 : static_cast<float>(msg->x / WALL_W_CM);
-        //             this->multiplier_y = (DEG_PASSED) ? 1 : static_cast<float>(msg->y / WALL_H_CM);
-        //         }
+
+        // auto img_proc_callback =
+        //     [this](const sensor_msgs::msg::PointCloud::UniquePtr msg) -> void {
+        //         this->imgProcCallback(std::move(msg));
         //     };
-
-        auto tracking_callback =
-            [this](sensor_msgs::msg::JointState::UniquePtr msg) -> void {
-                float y = (msg->name[0] == "MotorJointLeft") ? msg->position[0] : msg->position[1];
-                float x = (msg->name[0] == "MotorTop") ? msg->position[0] : msg->position[1];
-                this->update.updatePos(x, y);
-            };
-
-        auto img_proc_callback =
-            [this](sensor_msgs::msg::PointCloud::UniquePtr msg) -> void {
-                this->imgProcCallback(std::move(msg));
-            };
         
         // this->homing_subscription_ = this->create_subscription<geometry_msgs::msg::Point>("limits", 10, homing_callback);
-        this->position_subscription_ = this->create_subscription<sensor_msgs::msg::JointState>("joint_state", 10, tracking_callback);
-        this->position_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("forward_position_controller/commands", 10);
-        this->path_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("path", 10);
-        this->img_proc_subscription_ = this->create_subscription<sensor_msgs::msg::PointCloud>("detection", 10, img_proc_callback);
+        this->position_subscription_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
+            "odrive_position", 10,
+            [this](const std_msgs::msg::Float32MultiArray::UniquePtr msg) -> void {
+                this->update.updatePos(msg->data[0], msg->data[1]);
+            });
+        this->joint_subscription_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
+            "detected_joints", 10,
+            [this](const std_msgs::msg::Float32MultiArray::UniquePtr msg) -> void {
+                this->detected_joints.push_back(Update(std::make_pair(msg->data[0], msg->data[1])));
+            });
+        this->path_publisher_ = this->create_publisher<std_msgs::msg::Float32MultiArray>("path", 10);
+
+        this->contact_sensor_sub_ = this->create_subscription<std_msgs::msg::String>(
+            "/contact_sensor_triggered", 10,
+            [this](const std_msgs::msg::String::SharedPtr msg) {
+                RCLCPP_INFO(this->get_logger(), "%s CONTACT SENSOR TRIGGERED.", msg->data.c_str());
+                this->contact_sensor_callback(msg->data);
+            }
+        );
+
+        this->position_y_client_ = this->create_client<mason_test::srv::Float>("odrive_position_y");
+        this->position_x_client_ = this->create_client<mason_test::srv::Float>("odrive_position_x");
+        this->stop_y_client_ = this->create_client<std_srvs::srv::Empty>("odrive_stop_y");
+        this->stop_x_client_ = this->create_client<std_srvs::srv::Empty>("odrive_stop_x");
+
+        // this->img_proc_subscription_ = this->create_subscription<sensor_msgs::msg::PointCloud>("detection", 10, img_proc_callback);
+    }
+
+    void contact_sensor_callback(std::string sensor) {
+        bool ready = false;
+        while (!ready) {
+            ready = positionServiceIsAvailable(this->position_x_client_);
+            ready = ready && positionServiceIsAvailable(this->position_y_client_);
+            ready = ready && stoppingServiceIsAvailable(this->stop_x_client_);
+            ready = ready && stoppingServiceIsAvailable(this->stop_y_client_);
+        }
+
+        auto position_request = std::make_shared<mason_test::srv::Float::Request>();
+        auto stop_request = std::make_shared<std_srvs::srv::Empty::Request>();
+
+        switch (this->sensorMap[sensor]) {
+            case 0:
+                if (!std::isnan(this->min_x)) {
+                    float diff = std::abs(this->update.getPos().first - this->min_x);
+                    if (diff > 0.5f) {
+                        float new_pos = this->update.getPos().first + 0.75f;
+                        position_request->input_pos = new_pos;
+                        this->position_x_client_->async_send_request(position_request);
+                        // std::this_thread::sleep_for(std::chrono::seconds(1));
+                        RCLCPP_ERROR(this->get_logger(),
+                            "LIMB TRAPPED: LEFT CONTACT SENSOR TRIGGERED, BUT CURRENT_POS_X != MIN_X");
+                    }
+                    this->stop_x_client_->async_send_request(stop_request);
+                }
+                break;
+            case 1:
+                if (!std::isnan(this->max_x)) {
+                    float diff = std::abs(this->update.getPos().first - this->max_x);
+                    if (diff > 0.5f) {
+                        float new_pos = this->update.getPos().first - 0.75f;
+                        position_request->input_pos = new_pos;
+                        this->position_x_client_->async_send_request(position_request);
+                        // std::this_thread::sleep_for(std::chrono::seconds(1));
+                        RCLCPP_ERROR(this->get_logger(),
+                            "LIMB TRAPPED: RIGHT CONTACT SENSOR TRIGGERED, BUT CURRENT_POS_X != MAX_X");
+                    }
+                    this->stop_x_client_->async_send_request(stop_request);
+                }
+                break;
+            case 2:
+                if (!std::isnan(this->min_y)) {
+                    float diff = std::abs(this->update.getPos().second - this->min_y);
+                    if (diff > 0.5f) {
+                        float new_pos = this->update.getPos().second + 0.75f;
+                        position_request->input_pos = new_pos;
+                        this->position_y_client_->async_send_request(position_request);
+                        // std::this_thread::sleep_for(std::chrono::seconds(1));
+                        RCLCPP_ERROR(this->get_logger(),
+                            "LIMB TRAPPED: BOTTOM CONTACT SENSOR TRIGGERED, BUT CURRENT_POS_Y != MIN_Y");
+                    }
+                    this->stop_y_client_->async_send_request(stop_request);
+                }
+                break;
+            case 3:
+                if (!std::isnan(this->max_y)) {
+                    float diff = std::abs(this->update.getPos().second - this->max_y);
+                    if (diff > 0.5f) {
+                        float new_pos = this->update.getPos().second - 0.75f;
+                        position_request->input_pos = new_pos;
+                        this->position_y_client_->async_send_request(position_request);
+                        // std::this_thread::sleep_for(std::chrono::seconds(1));
+                        RCLCPP_ERROR(this->get_logger(),
+                            "LIMB TRAPPED: TOP CONTACT SENSOR TRIGGERED, BUT CURRENT_POS_Y != MAX_Y");
+                    }
+                    this->stop_y_client_->async_send_request(stop_request);
+                }
+                break;
+            default:
+                RCLCPP_ERROR(this->get_logger(), "UNIDENTIFIED CONTACT SENSOR TRIGGERED");
+                break;
+        }
+    }
+
+    bool positionServiceIsAvailable(rclcpp::Client<mason_test::srv::Float>::SharedPtr client) {
+        while (!client->wait_for_service(1s)) {
+            if (!rclcpp::ok()) {
+                RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for position service. Exiting...");
+                return false;
+            }
+            RCLCPP_INFO(this->get_logger(), "Position service not available, waiting again...");
+        }
+        return true;
+    }
+
+    bool stoppingServiceIsAvailable(rclcpp::Client<std_srvs::srv::Empty>::SharedPtr client) {
+        while (!client->wait_for_service(1s)) {
+            if (!rclcpp::ok()) {
+                RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for stopping service. Exiting...");
+                return false;
+            }
+            RCLCPP_INFO(this->get_logger(), "Stopping service not available, waiting again...");
+        }
+        return true;
     }
 
     bool serviceIsAvailable(rclcpp::Client<mason_navigation::srv::HomingSequence>::SharedPtr client) {
@@ -228,8 +331,19 @@ public:
     }
 
     void jointingPathPublisher() {
-        auto pathMsg = std_msgs::msg::Float64MultiArray();
-        auto posMsg = std_msgs::msg::Float64MultiArray();
+        auto pathMsg = std_msgs::msg::Float32MultiArray();
+        auto pos_request_x = std::make_shared<mason_test::srv::Float::Request>();
+        auto pos_request_y = std::make_shared<mason_test::srv::Float::Request>();
+        auto stop_request = std::make_shared<std_srvs::srv::Empty::Request>();
+
+        bool ready = false;
+        while (!ready) {
+            ready = positionServiceIsAvailable(this->position_x_client_);
+            ready = ready && positionServiceIsAvailable(this->position_y_client_);
+            ready = ready && stoppingServiceIsAvailable(this->stop_x_client_);
+            ready = ready && stoppingServiceIsAvailable(this->stop_y_client_);
+        }
+
         for (auto path : this->paths) {
             float currentX = this->update.getPos().first;
             float currentY = this->update.getPos().second;
@@ -243,8 +357,14 @@ public:
                     path.first.first*this->multiplier_x, path.first.second*this->multiplier_y};
             } else {
                 pathMsg.data = {path.first.first, path.first.second, path.second.first, path.second.second};
-                posMsg.data = {path.first.first, path.first.second};
-                this->position_publisher_->publish(posMsg);
+                pos_request_x->input_pos = path.first.first;
+                pos_request_y->input_pos = path.first.second;
+                this->position_x_client_->async_send_request(pos_request_x);
+                this->position_y_client_->async_send_request(pos_request_y);
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                this->stop_x_client_->async_send_request(stop_request);
+                this->stop_y_client_->async_send_request(stop_request);
+                // this->position_publisher_->publish(posMsg);
                 while (abs(path.first.first - currentX) > 1e-1 || abs(path.first.second - currentY) > 1e-1) {
                     currentX = this->update.getPos().first;
                     currentY = this->update.getPos().second;
@@ -258,24 +378,32 @@ public:
         }
     }
 
-    float wallSpanDegX = -1;
-    float wallSpanDegY = -1;
-    float min_x = 0;
-    float min_y = 0;
-    float max_x = 0;
-    float max_y = 0;
+    float min_x = std::nanf(""), min_y = std::nanf(""), max_x = std::nanf(""), max_y = std::nanf("");
 
 private:
     // rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr homing_subscription_;
-    rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr position_subscription_;
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr position_publisher_;
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr path_publisher_;
+    rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr position_subscription_;
+    rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr joint_subscription_;
+    rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr path_publisher_;
+    // rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr path_publisher_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud>::SharedPtr img_proc_subscription_;
+    rclcpp::Client<mason_test::srv::Float>::SharedPtr position_x_client_;
+    rclcpp::Client<mason_test::srv::Float>::SharedPtr position_y_client_;
+    rclcpp::Client<std_srvs::srv::Empty>::SharedPtr stop_x_client_;
+    rclcpp::Client<std_srvs::srv::Empty>::SharedPtr stop_y_client_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr contact_sensor_sub_;
     
     float multiplier_x = 1;
     float multiplier_y = 1;
+    std::unordered_map<std::string, int> sensorMap = {
+        {"LEFT", 0},
+        {"RIGHT", 1},
+        {"BOTTOM", 2},
+        {"TOP", 3}
+    };
     Update update;
     std::vector<std::pair<std::pair<float, float>, std::pair<float, float>>> paths = {};
+    std::vector<Update> detected_joints;
 };
 
 int main(int argc, char **argv) {
