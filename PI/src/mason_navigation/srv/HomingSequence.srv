@@ -4,5 +4,5 @@
 ---
 
 # Response
-float64 x_limit
-float64 y_limit
+float32 x_limit
+float32 y_limit
