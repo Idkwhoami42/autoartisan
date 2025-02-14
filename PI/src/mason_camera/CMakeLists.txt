@@ -36,6 +36,22 @@ install(TARGETS
   camera_node
   DESTINATION lib/${PROJECT_NAME})
 
+# ADDED FOR NODE 2 (START)
+add_executable(camera_node2 src/camera_node2.cpp)
+ament_target_dependencies(camera_node2
+  rclcpp
+  sensor_msgs
+  std_msgs
+  cv_bridge
+  image_transport
+  OpenCV
+)
+
+install(TARGETS
+  camera_node2
+  DESTINATION lib/${PROJECT_NAME})
+# ADDED FOR NODE 2 (END)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
