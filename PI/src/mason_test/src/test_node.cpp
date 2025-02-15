@@ -108,7 +108,19 @@ class TestNode : public rclcpp::Node {
         this->position_timer = this->create_wall_timer(50ms, [this]() {
             std_msgs::msg::Float32MultiArray msg;
             msg.data.push_back(-1 * (axis0_pos - axis0_offset));
-            msg.data.push_back((axis1_pos - axis1_offset + -1 * (axis2_pos - axis2_offset)) / 2);
+
+            float axis1_corrected_pos = axis1_pos - axis1_offset;
+            float axis2_corrected_pos = -1 * (axis2_pos - axis2_offset);
+
+            if (!float_compare(axis1_corrected_pos, axis2_corrected_pos, 1f)) {
+                RCLCPP_ERROR(this->get_logger(), "Axis 1 and Axis 2 are not in sync");
+                this->axis1_error = 1;
+                this->axis2_error = 1;
+                this->stop(1);
+                this->stop(2);
+            }
+
+            msg.data.push_back((axis1_corrected_pos + axis2_corrected_pos) / 2);
             this->pub_position->publish(msg);
         });
     }

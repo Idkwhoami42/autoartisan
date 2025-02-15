@@ -1,10 +1,3 @@
-// this code is example of publisher and subscriber
-// https://github.com/micro-ROS/micro_ros_arduino/blob/galactic/examples/micro-ros_subscriber/micro-ros_subscriber.ino
-// https://github.com/micro-ROS/micro_ros_arduino/blob/galactic/examples/micro-ros_publisher/micro-ros_publisher.ino
-// run micro_ros_agent before connecting arduino
-// docker run -it --rm -v /dev:/dev --privileged --net=host
-// microros/micro-ros-agent:galactic serial --dev /dev/cu.usbmodem1422201 -v6
-
 #include <Arduino.h>
 #include <micro_ros_platformio.h>
 #include <rcl/error_handling.h>
