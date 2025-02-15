@@ -3,6 +3,8 @@ project(mason_navigation)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-std=c++20)
+  # add_compile_definitions(-std=c++20)
 endif()
 
 find_package(ament_cmake REQUIRED)

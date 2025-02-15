@@ -19,6 +19,8 @@
 #define WALL_H_CM 91.75
 #define WALL_W_CM 99.5
 
+int run_count = 0;
+
 using namespace std::chrono_literals;
 
 // if (msg_led->data == 0) {
@@ -43,32 +45,44 @@ using namespace std::chrono_literals;
 //     deactivateExtruderMotor();
 // }
 
-typedef struct Path {
+struct Path {
     std::pair<float, float> start;
     std::pair<float, float> end;
     bool joint_filled;
+    bool joint_brushed;
     int orientation[2]; // vertical = {2, 4}, horizontal = {3, 5}
-} Path;
+
+    Path(std::pair<float, float> s, std::pair<float, float> e,
+        bool filled, bool brushed, std::array<int, 2> orient)
+        : start(s), end(e), joint_filled(filled), joint_brushed(brushed) {
+            orientation[0] = orient[0];
+            orientation[1] = orient[1];
+    }
+};
 
 class Update {
 public:
     Update() = default;
 
     Update(std::pair<float, float> currentPos) {
-        this->t = std::chrono::system_clock::now();
+        this->t = std::chrono::steady_clock::now();
         this->position = currentPos;
     }
 
     void updatePos(float x, float y) {
-        this->t = std::chrono::system_clock::now();
+        this->t = std::chrono::steady_clock::now();
         this->position = std::make_pair(x, y);
     }
 
     std::pair<float, float> getPos() {
         return this->position;
     }
+
+    std::chrono::time_point<std::chrono::steady_clock> getTimestamp() {
+        return this->t;
+    }
 private:
-    std::chrono::time_point<std::chrono::system_clock> t;
+    std::chrono::time_point<std::chrono::steady_clock> t;
     std::pair<float, float> position;
 };
 
@@ -77,11 +91,6 @@ class NavigationNode : public rclcpp::Node
 public:
     NavigationNode() : Node("nav_node") {
         this->update = Update(std::make_pair(0.0, 0.0));
-
-        // auto img_proc_callback =
-        //     [this](const sensor_msgs::msg::PointCloud::UniquePtr msg) -> void {
-        //         this->imgProcCallback(std::move(msg));
-        //     };
         
         this->position_subscription_ = this->create_subscription<std_msgs::msg::Float32MultiArray>(
             "odrive_position", 10,
@@ -92,8 +101,14 @@ public:
             "detected_joints", 10,
             [this](const std_msgs::msg::Float32MultiArray::UniquePtr msg) -> void {
                 this->detected_joints.push_back(Update(std::make_pair(msg->data[0], msg->data[1])));
+                auto last_time = this->detected_joints.back().getTimestamp();
+                auto diff = std::chrono::duration_cast<std::chrono::nanoseconds>(last_time.time_since_epoch()).count();
+                if (diff >= 120 || run_count > 0) {
+                    std::vector<std::vector<std::pair<float, float>>> clusters = clusteringPoints();
+                    clustersToPaths(clusters);
+                    jointPath();
+                }
             });
-        // this->path_publisher_ = this->create_publisher<std_msgs::msg::Float32MultiArray>("path", 10);
         this->tool_publisher_ = this->create_publisher<std_msgs::msg::Int32>(
             "/mason_fsm_publisher/state", 10);
 
@@ -109,8 +124,6 @@ public:
         this->position_x_client_ = this->create_client<mason_test::srv::Float>("odrive_position_x");
         this->stop_y_client_ = this->create_client<std_srvs::srv::Empty>("odrive_stop_y");
         this->stop_x_client_ = this->create_client<std_srvs::srv::Empty>("odrive_stop_x");
-
-        // this->img_proc_subscription_ = this->create_subscription<sensor_msgs::msg::PointCloud>("detection", 10, img_proc_callback);
     }
 
     void contact_sensor_callback(std::string sensor) {
@@ -221,8 +234,29 @@ public:
         return true;
     }
     
-    int calcLength(const std::vector<int> &points) {
-        return points[points.size()-1] - points[0];
+    void clustersToPaths(std::vector<std::vector<std::pair<float, float>>> clusters) {
+        // std::vector<std::pair<std::pair<float, float>, std::pair<float, float>>> paths;
+
+        for (const auto& cluster : clusters) {
+            if (cluster.empty()) continue;
+
+            auto stats = getStats(cluster);
+            auto avg = stats[0];
+            auto min = stats[1];
+            auto max = stats[2];
+        
+            bool isHorizontal = (max.first - min.first) > (max.second - min.second);
+
+            if (isHorizontal) {
+                this->paths.emplace_back(Path(std::make_pair(min.first, avg.second),
+                                                std::make_pair(max.first, avg.second),
+                                                false, false, {3, 5}));
+            } else {
+                this->paths.emplace_back(Path(std::make_pair(avg.first, min.second),
+                                                std::make_pair(avg.first, max.second),
+                                                false, false, {2, 4}));
+            }
+        }
     }
 
     bool checkIfInsideJoint(float x1, float y1, float x4, float y4, float x, float y) {
@@ -232,18 +266,19 @@ public:
     double getDistance(float x1, float y1, float x2, float y2) {
         const auto dx = static_cast<double>(x1 - x2);
         const auto dy = static_cast<double>(y1 - y2);
-        return sqrt(dx * dx + dy * dy);
+        return std::hypot(dx, dy);
     }
 
-    // std::vector<std::pair<float, float>> getPairs(std::vector<geometry_msgs::msg::Point32> points) {
-    //     std::vector<std::pair<float, float>> res;
-    //     for (auto point : points) {
-    //         res.emplace_back(point.x, point.y);
-    //     }
-    //     return res;
-    // }
+    std::vector<std::pair<float, float>> getPairs() {
+        std::vector<std::pair<float, float>> res;
+        // res.reserve(this->detected_joints.size());
+        for (auto point : this->detected_joints) {
+            res.emplace_back(point.getPos());
+        }
+        return res;
+    }
 
-    std::vector<std::pair<float, float>> getStats(std::vector<std::pair<float, float>> points) {
+    std::vector<std::pair<float, float>> getStats(const std::vector<std::pair<float, float>>& points) {
         auto sum = std::pair<float, float>(0, 0);
         auto min = std::pair<float, float>(FLT_MAX, FLT_MAX);
         auto max = std::pair<float, float>(FLT_MIN, FLT_MIN);
@@ -263,7 +298,7 @@ public:
     }
 
 
-    std::pair<float, float> getAvg(std::vector<std::pair<float, float>> points) {
+    std::pair<float, float> getAvg(const std::vector<std::pair<float, float>>& points) {
         const auto sum = std::accumulate(points.begin(), points.end(), std::pair<float, float>(0, 0),
         [](std::pair<float, float> acc, const std::pair<float, float>& point) {
                     return std::make_pair(acc.first + point.first, acc.second + point.second);
@@ -296,70 +331,48 @@ public:
         std::cout << "]," << std::endl;
     }
 
-    // std::vector<std::vector<std::pair<float, float>>> clusteringPoints(std::vector<geometry_msgs::msg::Point32> points) {
-    //     std::sort(points.begin(), points.end(), [](geometry_msgs::msg::Point32 a, geometry_msgs::msg::Point32 b)
-    //                                 {
-    //                                     if (a.x == b.x) return a.y < b.y;
-    //                                     return a.x < b.x;
-    //                                 });
+    std::vector<std::vector<std::pair<float, float>>> clusteringPoints() {
+        std::sort(this->detected_joints.begin(), this->detected_joints.end(), [](Update a, Update b)
+                                    {
+                                        auto a_cd = a.getPos();
+                                        auto b_cd = b.getPos();
+                                        auto ta = std::chrono::duration_cast<std::chrono::nanoseconds>(a.getTimestamp().time_since_epoch()).count();
+                                        auto tb = std::chrono::duration_cast<std::chrono::nanoseconds>(b.getTimestamp().time_since_epoch()).count();
+                                        if (ta == tb) {
+                                            if (a_cd.first == b_cd.first) return a_cd.second < b_cd.second;
+                                            return a_cd.first < b_cd.first;
+                                        }
+                                        return ta < tb;
+                                    });
 
-    //     std::vector<std::vector<std::pair<float, float>>> result = {{std::make_pair(points[0].x, points[0].y)}};
-    //     auto stats = getStats(getPairs(points));
-    //     const float distThreshX = (stats[2].first - stats[1].first) / 4.0;
-    //     const float distThreshY = (stats[2].second - stats[1].second) / 4.0;
+        std::vector<std::vector<std::pair<float, float>>> result = {{std::make_pair(this->detected_joints[0].getPos().first, this->detected_joints[0].getPos().second)}};
+        auto stats = getStats(getPairs());
+        const float distThreshX = (stats[2].first - stats[1].first) / 4.0;
+        const float distThreshY = (stats[2].second - stats[1].second) / 4.0;
 
-    //     int j = 1;
-    //     for (size_t i = 1; i < points.size(); ++i) {
-    //         float x = points[i].x;
-    //         float y = points[i].y;
+        int j = 1;
+        for (size_t i = 1; i < this->detected_joints.size(); ++i) {
+            float x = this->detected_joints[i].getPos().first;
+            float y = this->detected_joints[i].getPos().second;
 
-    //         int cluster = checkPreviousClusters(result, j - 1, x, y, distThreshX, distThreshY);
-    //         if (cluster != -1) {
-    //             result[cluster].emplace_back(points[i].x, points[i].y);
-    //         } else {
-    //             result.push_back({std::make_pair(points[i].x, points[i].y)});
-    //             j++;
-    //         }
-    //     }
+            int cluster = checkPreviousClusters(result, j - 1, x, y, distThreshX, distThreshY);
+            if (cluster != -1) {
+                // result[cluster].emplace_back(this->detected_joints[i].getPos().first, this->detected_joints[i].getPos().second);
+                result[cluster].emplace_back(x, y);
+            } else {
+                // result.push_back({std::make_pair(this->detected_joints[i].getPos().first, this->detected_joints[i].getPos().second)});
+                result.push_back({std::make_pair(x, y)});
+                j++;
+            }
+        }
 
-    //     // for (size_t i = 0; i < result.size(); ++i) {
-    //     //     auto centroid = getAvg(result[i]);
-    //     //     std::cout <<"Cluster" << i+1 << ": ";//"(" << centroid.first << ", " << centroid.second << ")" << std::endl;
-    //     //     printPoints(result[i]);
-    //     // }
-    //     return result;
-    // }
-
-    // std::vector<std::pair<std::pair<float, float>, std::pair<float, float>>> clustersToPaths(std::vector<std::vector<std::pair<float, float>>> clusters) {
-    //     std::vector<std::pair<std::pair<float, float>, std::pair<float, float>>> paths;
-
-    //     for (const auto& cluster : clusters) {
-    //         if (cluster.empty()) continue;
-
-    //         auto stats = getStats(cluster);
-    //         auto avg = stats[0];
-    //         auto min = stats[1];
-    //         auto max = stats[2];
-        
-    //         bool isHorizontal = (max.first - min.first) > (max.second - min.second);
-
-    //         if (isHorizontal) {
-    //             paths.emplace_back(std::make_pair(std::make_pair(min.first, avg.second),
-    //                                             std::make_pair(max.first, avg.second)));
-    //         } else {
-    //             paths.emplace_back(std::make_pair(std::make_pair(avg.first, min.second),
-    //                                             std::make_pair(avg.first, max.second)));
-    //         }
-    //     }
-
-    //     return paths;
-    // }
-
-
-    // void imgProcCallback(sensor_msgs::msg::PointCloud::UniquePtr msg) {
-    //     std::vector<std::vector<std::pair<float, float>>> clusters = clusteringPoints(msg->points);
-    //     this->paths = clustersToPaths(clusters);
-    // }
+        // for (size_t i = 0; i < result.size(); ++i) {
+        //     auto centroid = getAvg(result[i]);
+        //     std::cout <<"Cluster" << i+1 << ": ";//"(" << centroid.first << ", " << centroid.second << ")" << std::endl;
+        //     printPoints(result[i]);
+        // }
+        return result;
+    }
 
     void moveToXY(float currentX, float currentY, float targetX, float targetY) {
         auto pos_request_x = std::make_shared<mason_test::srv::Float::Request>();
@@ -416,7 +429,6 @@ public:
             } else {
                 publish_tool_msg(0);
             }
-            // this->path_publisher_->publish(pathMsg);
             
             moveToXY(this->update.getPos().first, this->update.getPos().second,
                     path[2], path[3]);
@@ -428,19 +440,25 @@ public:
                 p.joint_filled = true;
             } else {
                 publish_tool_msg(1);
+                p.joint_brushed = true;
             }
         }
+
+        run_count += 1;
+        const auto count = std::erase_if(this->paths, 
+        [](const Path& p) {
+            return p.joint_filled && p.joint_brushed;
+        });
+
+        RCLCPP_INFO(this->get_logger(), "%ld paths finished.", count);
     }
 
     float min_x = std::nanf(""), min_y = std::nanf(""), max_x = std::nanf(""), max_y = std::nanf("");
 
 private:
-    // rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr homing_subscription_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr position_subscription_;
     rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr joint_subscription_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr tool_publisher_;
-    // rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr path_publisher_;
-    // rclcpp::Subscription<sensor_msgs::msg::PointCloud>::SharedPtr img_proc_subscription_;
     rclcpp::Client<mason_test::srv::Float>::SharedPtr position_x_client_;
     rclcpp::Client<mason_test::srv::Float>::SharedPtr position_y_client_;
     rclcpp::Client<std_srvs::srv::Empty>::SharedPtr stop_x_client_;
