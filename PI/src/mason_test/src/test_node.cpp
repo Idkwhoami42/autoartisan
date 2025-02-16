@@ -112,7 +112,7 @@ class TestNode : public rclcpp::Node {
             float axis1_corrected_pos = axis1_pos - axis1_offset;
             float axis2_corrected_pos = -1 * (axis2_pos - axis2_offset);
 
-            if (!float_compare(axis1_corrected_pos, axis2_corrected_pos, 1f)) {
+            if (!float_compare(axis1_corrected_pos, axis2_corrected_pos, 1.0f)) {
                 RCLCPP_ERROR(this->get_logger(), "Axis 1 and Axis 2 are not in sync");
                 this->axis1_error = 1;
                 this->axis2_error = 1;
@@ -125,9 +125,9 @@ class TestNode : public rclcpp::Node {
         });
     }
 
-    void position_y_callback(const std::shared_ptr<rmw_request_id_t> request_header,
+    void position_y_callback(const std::shared_ptr<rmw_request_id_t> /*request_header*/,
                              const std::shared_ptr<mason_test::srv::Float::Request> request,
-                             const std::shared_ptr<mason_test::srv::Float::Response> response) {
+                             const std::shared_ptr<mason_test::srv::Float::Response> /*response*/) {
         RCLCPP_INFO(this->get_logger(), "Position Y callback called");
         RCLCPP_INFO(this->get_logger(), "Request: %f", request->input_pos);
 
@@ -148,9 +148,9 @@ class TestNode : public rclcpp::Node {
         return;
     }
 
-    void position_x_callback(const std::shared_ptr<rmw_request_id_t> request_header,
+    void position_x_callback(const std::shared_ptr<rmw_request_id_t> /*request_header*/,
                              const std::shared_ptr<mason_test::srv::Float::Request> request,
-                             const std::shared_ptr<mason_test::srv::Float::Response> response) {
+                             const std::shared_ptr<mason_test::srv::Float::Response> /*response*/) {
         RCLCPP_INFO(this->get_logger(), "Position X callback called");
         RCLCPP_INFO(this->get_logger(), "Request: %f", request->input_pos);
 
@@ -192,9 +192,9 @@ class TestNode : public rclcpp::Node {
         }
     }
 
-    void stop_x_callback(const std::shared_ptr<rmw_request_id_t> request_header,
-                         const std::shared_ptr<std_srvs::srv::Empty::Request> req,
-                         const std::shared_ptr<std_srvs::srv::Empty::Response> res) {
+    void stop_x_callback(const std::shared_ptr<rmw_request_id_t> /*request_header*/,
+                         const std::shared_ptr<std_srvs::srv::Empty::Request> /*req*/,
+                         const std::shared_ptr<std_srvs::srv::Empty::Response> /*res*/) {
         odrive_can::msg::ControlMessage control_msg;
         control_msg.control_mode = CONTROL_MODE_POSITION_CONTROL;
         control_msg.input_mode = INPUT_MODE_PASSTHROUGH;
@@ -203,9 +203,9 @@ class TestNode : public rclcpp::Node {
         this->pub0->publish(control_msg);
     }
 
-    void stop_y_callback(const std::shared_ptr<rmw_request_id_t> request_header,
-                         const std::shared_ptr<std_srvs::srv::Empty::Request> req,
-                         const std::shared_ptr<std_srvs::srv::Empty::Response> res) {
+    void stop_y_callback(const std::shared_ptr<rmw_request_id_t> /*request_header*/,
+                         const std::shared_ptr<std_srvs::srv::Empty::Request> /*req*/,
+                         const std::shared_ptr<std_srvs::srv::Empty::Response> /*res*/) {
         odrive_can::msg::ControlMessage control_msg;
         control_msg.control_mode = CONTROL_MODE_POSITION_CONTROL;
         control_msg.input_mode = INPUT_MODE_PASSTHROUGH;
