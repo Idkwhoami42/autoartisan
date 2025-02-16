@@ -1,11 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import CameraFeed from "./camerafeed";
 import Resovoir from "./res";
 
 function App() {
 
-
+  const [capacity, setCapacity] = useState<string>("Capacity: - ");
   const [ok, setOk] = useState(true);
+
+  useEffect(() => {
+          fetch("http://localhost:5000/percentage")
+              .then(response => response.json())
+              .then(data => {
+                setCapacity(data[0]);
+              });
+      }, [capacity]);
 
   return (
     <main className="min-h-screen flex-col bg-black font-mono">
@@ -22,7 +30,7 @@ function App() {
           </div>
           <div className="flex">
             <span>Amount Remaining</span>
-            <span className="ml-auto">0.0L</span>
+            <span className="ml-auto" content={capacity} />
           </div>
           <div className="flex">
             <span>Runtime</span>
@@ -39,7 +47,7 @@ function App() {
 
         </div>
 
-        {/* <Resovoir setOk={setOk} /> */}
+        {<Resovoir setOk={setOk} />}
 
       </div>
 

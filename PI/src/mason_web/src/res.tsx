@@ -4,12 +4,20 @@ export default function Resovoir({ setOk }: { setOk: (ok: boolean) => void }) {
     const [items, setItems] = useState(10);
     const [color, setColor] = useState("green");
 
+    // useEffect(() => {
+    //     new Promise((resolve) => setInterval(resolve, 1000)).then(() => {
+    //         if (items != 0) {
+    //             setItems(items - 1);
+    //         }
+    //     });
+    // }, [items]);
+
     useEffect(() => {
-        new Promise((resolve) => setInterval(resolve, 1000)).then(() => {
-            if (items != 0) {
-                setItems(items - 1);
-            }
-        });
+        fetch("http://localhost:5000/capacity")
+            .then(response => response.json())
+            .then(data => {
+                setItems(data[0]);
+            });
     }, [items]);
 
     useEffect(() => {

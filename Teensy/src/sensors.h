@@ -1,5 +1,9 @@
 #include <Arduino.h>
 #include <Servo.h>
+#include <AS5047P.h>
+
+#define AS5047P_CHIP_SELECT_PORT 9 
+#define AS5047P_CUSTOM_SPI_BUS_SPEED 100000
 
 #define BRUSH_SERVO_PIN 2
 #define VERTICAL_SMOOTHING_SERVO_PIN 3
@@ -15,8 +19,20 @@
 Servo brushServo;
 Servo verticalSmoothingServo;
 Servo horizontalSmoothingServo;
+AS5047P as5047p(AS5047P_CHIP_SELECT_PORT, AS5047P_CUSTOM_SPI_BUS_SPEED);
 
 inline void setupBrushServo() { brushServo.attach(BRUSH_SERVO_PIN); }
+
+inline void setupAS5047P() { 
+    while (!as5047p.initSPI()) {
+        Serial.println(F("Can't connect to the AS5047P sensor! Please check the connection..."));
+        delay(500);
+    }
+}
+
+inline float getAngle() {
+    return as5047p.readAngleDegree();
+}
 
 inline void setupSmoothingServos() {
     verticalSmoothingServo.attach(VERTICAL_SMOOTHING_SERVO_PIN);

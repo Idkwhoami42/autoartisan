@@ -102,7 +102,7 @@ public:
             [this](const std_msgs::msg::Float32MultiArray::UniquePtr msg) -> void {
                 this->detected_joints.push_back(Update(std::make_pair(msg->data[0], msg->data[1])));
                 auto last_time = this->detected_joints.back().getTimestamp();
-                auto diff = std::chrono::duration_cast<std::chrono::nanoseconds>(last_time.time_since_epoch()).count();
+                auto diff = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - last_time).count();
                 if (diff >= 120 || run_count > 0) {
                     std::vector<std::vector<std::pair<float, float>>> clusters = clusteringPoints();
                     clustersToPaths(clusters);
