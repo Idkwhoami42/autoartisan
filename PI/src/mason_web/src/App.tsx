@@ -1,58 +1,31 @@
-import { useEffect, useState } from "react";
-import CameraFeed from "./camerafeed";
-import Resovoir from "./res";
+import { ThemeProvider } from "~/components/theme-provider";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { Button } from "./components/ui/button";
+import Dashboard from "./dashboard";
 
-function App() {
-
-  const [capacity, setCapacity] = useState<string>("Capacity: - ");
-  const [ok, setOk] = useState(true);
-
-  useEffect(() => {
-          fetch("http://localhost:5000/percentage")
-              .then(response => response.json())
-              .then(data => {
-                setCapacity(data[0]);
-              });
-      }, [capacity]);
-
+const App = () => {
   return (
-    <main className="min-h-screen flex-col bg-black font-mono">
-      <div className={`w-full flex justify-center items-center ${ok ? 'bg-[#32a887]' : 'bg-red-600'} text-4xl p-3`}>
-        Status: Operational
-      </div>
-      <div className="flex text-white mx-10 my-5 w-full gap-15">
-        <div className="h-full w-[20%] flex-col items-center gap-4">
-          <div className="flex">
-            <span>
-              Extruded Amount
-            </span>
-            <span className="ml-auto">0.0L</span>
-          </div>
-          <div className="flex">
-            <span>Amount Remaining</span>
-            <span className="ml-auto" content={capacity} />
-          </div>
-          <div className="flex">
-            <span>Runtime</span>
-            <span className="ml-auto">00 h : 00 m : 00 s</span>
-          </div>
-          <div className="h-[40px]"></div>
-          <span className="text-xl">Extruder Coordinates</span>
-          <div className="flex gap-[20px]">
-            <span className="text-red-600">X: 0.0</span>
-            <span className="text-green-600">Y: 0.0</span>
-          </div>
+    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<AppC />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+        </Routes>
+      </BrowserRouter>
+    </ThemeProvider>
+  );
+};
 
-          <CameraFeed />
-
-        </div>
-
-        {<Resovoir setOk={setOk} />}
-
-      </div>
-
+const AppC = () => {
+  const navigate = useNavigate();
+  return (
+    <main className="min-h-screen flex flex-col items-center justify-center font-mono gap-4">
+      <h1 className="text-4xl font-bold">MASON</h1>
+      <Button variant="secondary" onClick={() => navigate("/dashboard")}>
+        Dashboard
+      </Button>
     </main>
-  )
-}
+  );
+};
 
-export default App
+export default App;

@@ -1,46 +1,42 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState } from "react";
 
-export default function Resovoir({ setOk }: { setOk: (ok: boolean) => void }) {
-    const [items, setItems] = useState(10);
-    const [color, setColor] = useState("green");
+export default function Resovoir() {
+  const [volume, setVolume] = useState(100);
+  const [color, setColor] = useState("green");
 
-    // useEffect(() => {
-    //     new Promise((resolve) => setInterval(resolve, 1000)).then(() => {
-    //         if (items != 0) {
-    //             setItems(items - 1);
-    //         }
-    //     });
-    // }, [items]);
+  useEffect(() => {
+    new Promise((resolve) => setInterval(resolve, 50)).then(() => {
+      if (volume != 0) 
+        setVolume((volume - 1));
+    });
+  }, [volume]);
 
-    useEffect(() => {
-        fetch("http://localhost:5000/capacity")
-            .then(response => response.json())
-            .then(data => {
-                setItems(data[0]);
-            });
-    }, [items]);
+  useEffect(() => {
+    if (volume <= 10) setColor("red");
+    else if (volume <= 25) setColor("orange");
+    else if (volume <= 50) setColor("yellow");
+    else setColor("green");
+  }, [volume]);
 
-    useEffect(() => {
-        if (items == 5) setColor("yellow");
-        else if (items == 2) setColor("orange");
-        else if (items == 0) {
-            setColor("red");
-            setOk(false);
-        }
-    }, [items]);
-
-
-    return (
-        <>
-            <div className="border-green-600"></div>
-            <div className="border-orange-600"></div>
-            <div className="border-red-600"></div>
-            <div className="border-yellow-600"></div>
-            <div className={`w-[100px] h-[400px] bg-transparent border-4 border-${color}-600 flex flex-col-reverse gap-2 items-center py-2`}>
-                {[...Array(items)].map((_, i) => (
-                    <div key={i} className={`w-[85px] h-[30px] bg-transparent border-4 border-${color}-600`}></div>
-                ))}
-            </div>
-        </>
-    )
+  return (
+    <>
+      <div className="border-green-600"></div>
+      <div className="border-orange-600"></div>
+      <div className="border-red-600"></div>
+      <div className="border-yellow-600"></div>
+      <span className="text-2xl">Extruder</span>
+      <span className="mt-4 text-xl">State: {volume != 0 ? "OK" : "Empty"}</span>
+      <span className="text-xl">Remaining: {volume}%</span>
+      <div
+        className={`mx-auto w-[60%] h-full bg-transparent border-3 border-${color}-600 flex flex-col-reverse gap-3 items-center px-3 py-2 my-4`}
+      >
+        {[...Array(Math.floor(volume/10))].map((_, i) => (
+          <div
+            key={i}
+            className={`h-[30px] w-full bg-transparent border-3 border-${color}-600 `}
+          ></div>
+        ))}
+      </div>
+    </>
+  );
 }

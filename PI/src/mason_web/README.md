@@ -7,6 +7,7 @@ This folder contains the code for the web interface for the mason robot. The cod
 ## Usage
 
 To run the web interface, you must have bun installed and run the following commands
+
 ```bash
 # installing node dependencies
 bun i
@@ -17,4 +18,5 @@ bun run dev --host autoartisan.local
 The interface will be available at http://autoartisan.local:5173
 
 ## Style Guide and Linting
+
 We use prettier and ESLint to format the code.
