@@ -2,30 +2,10 @@ import { useAtom } from "jotai";
 import { Button } from "./components/ui/button";
 import { masonStateAtom } from "./state";
 import { stateToColor } from "./lib/utils";
-import Resovoir from "./res";
+import Resovoir from "./resovoir";
+import Camera from "./camera";
 
 const Dashboard = () => {
-  const [masonState, setMasonState] = useAtom(masonStateAtom);
-
-  return (
-    <main className="min-h-screen flex flex-col font-mono">
-      {masonState === "WAITING" && (
-        <Button
-          variant="ghost"
-          className="text-4xl my-auto"
-          onClick={() => {
-            setMasonState("IDLE");
-          }}
-        >
-          START MASON
-        </Button>
-      )}
-      {masonState !== "WAITING" && <F />}
-    </main>
-  );
-};
-
-const F = () => {
   const [masonState, setMasonState] = useAtom(masonStateAtom);
 
   return (
@@ -52,7 +32,7 @@ const F = () => {
         </div>
 
         <div className="border-2 rounded-md p-4 text-2xl col-span-3 row-span-15 flex flex-col">
-          <span className="text-2xl">Settings </span>          
+          <span className="text-2xl">Settings </span>
         </div>
 
         <div className="border-2 rounded-md p-4 text-2xl col-span-4 row-span-5 flex flex-col">
@@ -75,17 +55,14 @@ const F = () => {
 
         <div className="border-2 rounded-md p-4 text-2xl col-span-3 row-span-3 flex flex-col">
           <span className="text-2xl">Position</span>
-          <span className="mt-2 text-xl">X: {0}   Y: {0}</span>
+          <span className="mt-2 text-xl">
+            X: {0} Y: {0}
+          </span>
         </div>
 
         <div className="border-2 rounded-md p-4 text-2xl col-span-7 row-span-9 flex flex-col">
-          <span className="text-2xl">Camera </span>
-          <div className="mt-3 flex gap-1">
-            <div className="border-2 flex-1 h-[200px]"></div>
-            <div className="border-2 flex-1 h-full"></div>
-          </div>
+          <Camera />
         </div>
-        
       </div>
 
       <div
