@@ -60,29 +60,36 @@ void error_loop(String msg) {
  * @param msgin
  */
 void subscription_callback(const void *msgin) {
-    const std_msgs__msg__Int32 *msg_led = (const std_msgs__msg__Int32 *)msgin;
+    const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
+
+    const data1 = msg->data && 0xFFFF;
+    const data2 = msg->data >> 16;
 
     // START BRUSH
-    if (msg_led->data == 0) {
+    if (data1 == 0) {
         activateBrush();
-    } else if (msg_led->data == 1) {
+    } else if (data1 == 1) {
         deactivateBrush();
-    } else if (msg_led->data == 2) {
+    } else if (data1 == 2) {
         activateVerticalSmoothing();
-    } else if (msg_led->data == 3) {
+    } else if (data1 == 3) {
         activateHorizontalSmoothing();
-    } else if (msg_led->data == 4) {
+    } else if (data1 == 4) {
         deactivateVerticalSmoothing();
-    } else if (msg_led->data == 5) {
+    } else if (data1 == 5) {
         deactivateHorizontalSmoothing();
-    } else if (msg_led->data == 6) {
-        goForward(1000);
-    } else if (msg_led->data == 7) {
-        goBack(1000);
-    } else if (msg_led->data == 8) {
-        activateExtruderMotor();
-    } else if (msg_led->data == 9) {
-        deactivateExtruderMotor();
+    } else if (data1 == 6) {
+        if (data2 == 0) {
+            goForward(1000);
+        } else {
+            goForward(data2);
+        }
+    } else if (data1 == 7) {
+        if (data2 == 0) {
+            goBack(1000);
+        } else {
+            goBack(data2);
+        }
     }
 }
 
@@ -189,7 +196,7 @@ void setup() {
         delay(250);
     }
 
-    digitalWrite(LED_PIN, LOW);
+    digitalWrite(LED_PIN, HIGH);
 
     setupSmoothingServos();
 

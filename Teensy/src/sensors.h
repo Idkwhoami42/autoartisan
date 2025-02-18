@@ -5,16 +5,20 @@
 #define AS5047P_CHIP_SELECT_PORT 9 
 #define AS5047P_CUSTOM_SPI_BUS_SPEED 100000
 
-#define BRUSH_SERVO_PIN 2
-#define VERTICAL_SMOOTHING_SERVO_PIN 3
-#define HORIZONTAL_SMOOTHING_SERVO_PIN 4
+#define BRUSH_SERVO_PIN 0
+#define VERTICAL_SMOOTHING_SERVO_PIN 2
+#define HORIZONTAL_SMOOTHING_SERVO_PIN 3
 #define MOTOR_SPEED 50
 
 #define BRUSH_SERVO_DEFAULT_POSITION 93
 
-#define EXTRUDER_PWM_PIN 5
-#define EXTRUDER_IN1_PIN 6
-#define EXTRUDER_IN2_PIN 7
+#define EXTRUDER_PWM_PIN 6
+#define EXTRUDER_IN1_PIN 5
+#define EXTRUDER_IN2_PIN 4
+
+#define BRUSH_PWN_PIN 9
+#define BRUSH_IN1_PIN 8
+#define BRUSH_IN2_PIN 7
 
 Servo brushServo;
 Servo verticalSmoothingServo;
@@ -40,12 +44,12 @@ inline void setupSmoothingServos() {
 }
 
 inline void setupBrushMotor() {
-    // pinMode(3, OUTPUT);
-    // pinMode(4, OUTPUT);
-    // pinMode(5, OUTPUT);
+    pinMode(BRUSH_PWN_PIN, OUTPUT);
+    pinMode(BRUSH_IN1_PIN, OUTPUT);
+    pinMode(BRUSH_IN2_PIN, OUTPUT);
 
-    // digitalWrite(3, HIGH);
-    // digitalWrite(4, LOW);
+    digitalWrite(BRUSH_IN1_PIN, HIGH);
+    digitalWrite(BRUSH_IN2_PIN, LOW);
 }
 
 inline void activateBrush() {
