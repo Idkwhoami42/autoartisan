@@ -4,6 +4,7 @@ import { masonStateAtom } from "./state";
 import { stateToColor } from "./lib/utils";
 import Resovoir from "./resovoir";
 import Camera from "./camera";
+import Position from "./position";
 
 const Dashboard = () => {
   const [masonState, setMasonState] = useAtom(masonStateAtom);
@@ -54,10 +55,7 @@ const Dashboard = () => {
         </div>
 
         <div className="border-2 rounded-md p-4 text-2xl col-span-3 row-span-3 flex flex-col">
-          <span className="text-2xl">Position</span>
-          <span className="mt-2 text-xl">
-            X: {0} Y: {0}
-          </span>
+          <Position />
         </div>
 
         <div className="border-2 rounded-md p-4 text-2xl col-span-7 row-span-9 flex flex-col">

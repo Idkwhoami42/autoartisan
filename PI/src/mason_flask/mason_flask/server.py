@@ -13,7 +13,7 @@ from realsense2_camera_msgs.msg import RGBD
 from utils import process_frames
 import time
 import random
-
+from std_msgs.msg import Float32MultiArray
 
 app = Flask(__name__)
 
@@ -28,10 +28,15 @@ class FlaskNode(Node):
         self.image = None
         self.detection_image = None
         self.last_image_time = 0
+        self.position = None
 
         # Create subscription
         self.subscription = self.create_subscription(
             RGBD, "/camera/camera/rgbd", self.image_callback, 10  # QoS proile depth
+        )
+
+        self.subscription = self.create_subscription(
+            Float32MultiArray, "/odrive_position", self.position_callback, 10
         )
 
     def image_callback(self, msg):
@@ -53,6 +58,9 @@ class FlaskNode(Node):
             f"data:image/jpeg;base64,{base64.b64encode(buffer2).decode('utf-8')}"
         )
 
+    def position_callback(self, msg):
+        self.position = msg.data
+
 
 def ros_spin():
     rclpy.spin(node)
@@ -68,13 +76,27 @@ def stream():
 
     return Response(generate(), mimetype="text/event-stream")
 
+
 @app.route("/resovoir")
 def resovoir():
     def stream():
         for i in range(100, -1, -1):
-            yield  f"data: {i}\n\n"
+            yield f"data: {i}\n\n"
             time.sleep(random.random())
-    return Response(stream(), mimetype='text/event-stream')
+
+    return Response(stream(), mimetype="text/event-stream")
+
+
+@app.route("/position")
+def position():
+    def stream():
+        while True:
+            yield f"data: {json.dumps({
+                'x': node.position[0],
+                'y': node.position[1],})}\n\n"
+            time.sleep(0.1)
+    return Response(stream(), mimetype="text/event-stream")
+
 
 if __name__ == "__main__":
     # Initialize ROS 2
