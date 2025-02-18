@@ -6,7 +6,7 @@
 #define AS5047P_CUSTOM_SPI_BUS_SPEED 100000
 
 #define BRUSH_SERVO_PIN 0
-#define VERTICAL_SMOOTHING_SERVO_PIN 2
+#define VERTICAL_SMOOTHING_SERVO_PIN 1
 #define HORIZONTAL_SMOOTHING_SERVO_PIN 3
 #define MOTOR_SPEED 50
 
@@ -25,13 +25,12 @@ Servo verticalSmoothingServo;
 Servo horizontalSmoothingServo;
 AS5047P as5047p(AS5047P_CHIP_SELECT_PORT, AS5047P_CUSTOM_SPI_BUS_SPEED);
 
+float percentage = std::nanf("");
+
 inline void setupBrushServo() { brushServo.attach(BRUSH_SERVO_PIN); }
 
 inline void setupAS5047P() { 
-    while (!as5047p.initSPI()) {
-        Serial.println(F("Can't connect to the AS5047P sensor! Please check the connection..."));
-        delay(500);
-    }
+    as5047p.initSPI();
 }
 
 inline float getAngle() {
@@ -54,11 +53,11 @@ inline void setupBrushMotor() {
 
 inline void activateBrush() {
     brushServo.write(BRUSH_SERVO_DEFAULT_POSITION + 25);
-    analogWrite(5, 240);
+    analogWrite(BRUSH_PWN_PIN, 240);
 }
 
 inline void deactivateBrush() {
-    analogWrite(5, 0);
+    analogWrite(BRUSH_PWN_PIN, 0);
     brushServo.write(BRUSH_SERVO_DEFAULT_POSITION);
 }
 
@@ -113,3 +112,41 @@ inline void goBack(int duration) {
 
     deactivateExtruderMotor();
 }
+
+
+// inline int get_section(float p) {
+//     if (p >= 0.0f && p < 10.0f)
+//         return 1;
+//     else if (p >= 10.0f && p < 20.0f)
+//         return 2;
+//     else if (p >= 20.0f && p < 30.0f)
+//         return 3;
+//     else if (p >= 30.0f && p < 40.0f)
+//         return 4;
+//     else if (p >= 40.0f && p < 50.0f)
+//         return 5;
+//     else if (p >= 50.0f && p < 60.0f)
+//         return 6;
+//     else if (p >= 60.0f && p < 70.0f)
+//         return 7;
+//     else if (p >= 70.0f && p < 80.0f)
+//         return 8;
+//     else if (p >= 80.0f && p < 90.0f)
+//         return 9;
+//     else
+//         return 10;
+// }
+
+// inline int update_capacity(float angle) {
+//     float d =
+//         (angle / static_cast<float>(360)) * (static_cast<float>(60) / static_cast<float>(34))
+//         * 2.0;
+//     float prev_percentage = std::isnan(percentage) ? std::nanf("") : percentage;
+//     percentage = 100 * (17.75 - d) / 17.75;
+
+
+//     if (std::isnan(prev_percentage) || (get_section(prev_percentage) != get_section(percentage)))
+//     {
+//         return get_section(percentage);
+//     }
+// }
