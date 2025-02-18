@@ -62,8 +62,8 @@ void error_loop(String msg) {
 void subscription_callback(const void *msgin) {
     const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
 
-    const data1 = msg->data && 0xFFFF;
-    const data2 = msg->data >> 16;
+    int16_t data1 = msg->data && 0xFFFF;
+    int16_t data2 = msg->data >> 16;
 
     // START BRUSH
     if (data1 == 0) {
