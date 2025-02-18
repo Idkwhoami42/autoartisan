@@ -2,7 +2,7 @@
 #include <Servo.h>
 #include <AS5047P.h>
 
-#define AS5047P_CHIP_SELECT_PORT 9 
+#define AS5047P_CHIP_SELECT_PORT 10
 #define AS5047P_CUSTOM_SPI_BUS_SPEED 100000
 
 #define BRUSH_SERVO_PIN 0
