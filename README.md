@@ -1,5 +1,7 @@
 # AutoArtisan
 
+This repo contains the ROS2 (Jazzy) and Arduino Code for **Mason**: An innovative brick jointing robot. The robot was designed and built by a team 6 students part of the [robotics minor](https://www.tudelft.nl/en/me/education/minors-and-electives/robotics) for [SMB Geveltechniek](https://www.smbgeveltechniek.nl/).
+
 ## Description
 
 This repository contains the source code for the Mason robot. There are 2 main components:
